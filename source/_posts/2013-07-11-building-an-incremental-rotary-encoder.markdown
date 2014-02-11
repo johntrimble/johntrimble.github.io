@@ -3,7 +3,9 @@ layout: post
 title: "Building a Quadrature Rotary Encoder"
 date: 2013-07-11 22:42
 comments: true
-categories:
+categories: 
+footer: true
+sharing: true
 ---
 
 Today I document the saga of building an quadrature rotary encoder. I undertook the project as a way to become more familiar with electronics. My more optimistic past self thought the task relatively straight forward, but a few months of misteps, redsigns, and code rewrites have taught me otherwise. Nonetheless, it's been quite a learning experience, and hopefully this post will provide some guidance to anyone taking on a similar project.
