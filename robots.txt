@@ -1,0 +1,4 @@
+User-agent: *
+Disallow: 
+
+Sitemap: http://johntrimble.github.io/sitemap.xml 
