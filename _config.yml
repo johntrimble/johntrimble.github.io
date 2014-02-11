@@ -2,9 +2,9 @@
 #      Main Configs       #
 # ----------------------- #
 
-url: http://johntrimble.com
-title: JohnTrimble.com
-subtitle:
+url: http://johntrimble.github.io
+title: John Trimble
+subtitle: Tinkerer, Problem Solver, Software Engineer
 author: John Trimble
 simple_search: http://google.com/search
 description:
