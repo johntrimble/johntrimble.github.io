@@ -1,0 +1,248 @@
+
+<!DOCTYPE html>
+<!--[if IEMobile 7 ]><html class="no-js iem7"><![endif]-->
+<!--[if lt IE 9]><html class="no-js lte-ie8"><![endif]-->
+<!--[if (gt IE 8)|(gt IEMobile 7)|!(IEMobile)|!(IE)]><!--><html class="no-js" lang="en"><!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <title>Migrating From WordPress.com to WordPress.org - John Trimble</title>
+  <meta name="author" content="John Trimble">
+
+  
+  <meta name="description" content="Recently at meltmedia, I had to port a blog for one of our clients from WordPress.com to a self-hosted WordPress.org install. Normally, most of the &hellip;">
+  
+
+  <!-- http://t.co/dKP3o1e -->
+  <meta name="HandheldFriendly" content="True">
+  <meta name="MobileOptimized" content="320">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  
+  <link rel="canonical" href="http://johntrimble.github.io/blog/2011/04/24/migrating-from-wordpress-com-to-wordpress-org">
+  <link href="/favicon.png" rel="icon">
+  <link href="/stylesheets/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
+  <link href="/atom.xml" rel="alternate" title="John Trimble" type="application/atom+xml">
+  <script src="/javascripts/modernizr-2.0.js"></script>
+  <script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+  <script>!window.jQuery && document.write(unescape('%3Cscript src="./javascripts/libs/jquery.min.js"%3E%3C/script%3E'))</script>
+  <script src="/javascripts/octopress.js" type="text/javascript"></script>
+  <!--Fonts from Google"s Web font directory at http://google.com/webfonts -->
+<link href="http://fonts.googleapis.com/css?family=PT+Serif:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
+<link href="http://fonts.googleapis.com/css?family=PT+Sans:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
+
+  
+
+</head>
+
+<body   >
+  <header role="banner"><hgroup>
+  <h1><a href="/">John Trimble</a></h1>
+  
+    <h2>Tinkerer, Problem Solver, Software Engineer</h2>
+  
+</hgroup>
+
+</header>
+  <nav role="navigation"><ul class="subscription" data-subscription="rss">
+  <li><a href="/atom.xml" rel="subscribe-rss" title="subscribe via RSS">RSS</a></li>
+  
+</ul>
+  
+<form action="http://google.com/search" method="get">
+  <fieldset role="search">
+    <input type="hidden" name="q" value="site:johntrimble.github.io" />
+    <input class="search" type="text" name="q" results="0" placeholder="Search"/>
+  </fieldset>
+</form>
+  
+<ul class="main-navigation">
+  <li><a href="/">Blog</a></li>
+  <li><a href="/blog/archives">Archives</a></li>
+  <li><a href="/papers">Papers</a></li>
+</ul>
+
+</nav>
+  <div id="main">
+    <div id="content">
+      <div>
+<article class="hentry" role="article">
+  
+  <header>
+    
+      <h1 class="entry-title">Migrating From WordPress.com to WordPress.org</h1>
+    
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2011-04-24T07:08:00-07:00" pubdate data-updated="true">Apr 24<span>th</span>, 2011</time>
+        
+      </p>
+    
+  </header>
+
+
+<div class="entry-content"><p>Recently at <a href="http://www.meltmedia.com/">meltmedia</a>, I had to port a blog for one of our clients from WordPress.com to a self-hosted WordPress.org install. Normally, most of the work I do is with Java, JBoss, OSGi and technologies of that sort, so working with WordPress and PHP was quite a new experience for me. At first, the thought of porting a WordPress.com blog to a self-hosted WordPress.org solution seemed like a simple matter, but it ended up being more involved than I expected.</p>
+
+<p>Our client used a number WordPress.com features not available in a vanilla WordPress.org install, namely: social network sharing for posts, publicizing tools for Twitter and Facebook (among others), slideshows, email subscriptions, site stats, short links, embedded video shortcodes, a Twitter feed widget, and special support for mobile clients. WordPress.com provides some of these features through equivalent plugins for WordPress.org, others are just 3rd party plugins, and some are proprietary with no directly equivalent WordPress.org counterpart.</p>
+
+<p>I originally installed the Sharedaddy, WordPress.com Stats, and Wickett Twitter Widget plugins to provide the social networking for posts, stats, and twitter widget functionality respectively, but later on switched to using WordPress.com’s Jetpack plugin (released while I was working on the port) which provides the same features as well as shortcodes for embedded videos and short links. Jetpack proves satisfactory in most respects, though it does have the drawback of requiring a WordPress.com account (not a big deal since the client already had one) and the plugin also requires that any WordPress.org instance using it be on a publicly accessible domain, which is problematic for development where I prefer to work (as I assume most developers do) on my localhost. Unfortunately, while JetPack does fill a number of gaps, there are still some proprietary features of WordPress.com for which it does not provide support, slideshows in particular.</p>
+
+<p>WordPress.com has this nice feature where if you put a <code>[slideshow]</code> shortcode in a post’s content, it will be replaced by an animated slideshow of the images attached to the post. To my knowledge, WordPress.com provides no plugin for this feature, though they stated in a blog <a href="http://en.blog.wordpress.com/2010/03/31/share-photos-with-a-slideshow/">post</a> from over a year ago that such a plugin would soon be available. Sadly, despite my best efforts, I could not find a suitable plugin to provide the same functionality. While there is certainly no shortage of slideshow plugins for WordPress.org, each of them seems to have one shortcoming or another. For example, <a href="http://wordpress.org/extend/plugins/nextgen-gallery/">NextGEN Gallery</a> provides, among many other great features, support for in post slideshows, but it was incompatible with the WPtouch plugin that I also needed, and it doesn’t simply use the images attached to the post, but requires a set of images to be uploaded and grouped together separately from the post. Arguably, this latter issue is less of a shortcoming than a more appropriate and flexible way to manage the relavent data, but I wanted to make the change of hosts as transparent as possible to the client, and requiring them to manage such information elsewhere seemed too disruptive to their existing work flow. I also looked into <a href="http://wordpress.org/extend/plugins/slideshow-gallery-2/">Slideshow Gallery</a>, and a number of its derivatives, but they had poor support for images of varying sizes and also proved similarly difficult to get working with the WPtouch plugin. In the end, I was unable to find a replacement for the slideshow feature, though I’m hoping a future version of Jetpack will include such support. I’ve been toying with the idea of creating my own replacement, the WordPress.com slideshow is essentially just a wrapper for the jQuery cycle plugin, but time being the rare commodity it is, I’ve yet to get around to it.</p>
+
+<p>Email subscriptions is another area where no directly equivalent plugin exists. I ended up electing to use <a href="http://wordpress.org/extend/plugins/slideshow-gallery-2/">MailPress</a> to fulfill this requirement, which is overkill for the task, user subscription for notification by email of new posts and comments on the site, but it works. Transferring existing subscriptions over proved relatively simple. A subscriber list CSV export can be acquired through the WordPress.com admin interface (it’s located, somewhat confusingly, in the stats section), and MailPress has a subscriber import tool which can import the data. The only issue was that MailPress didn’t like that the CSV file generated by WordPress.com had only a single column, but its complaints were silenced by simply adding a comma to the end of each line in the CSV.</p>
+
+<p>The mobile optimized support that WordPress.com offers comes from the <a href="http://www.bravenewcode.com/store/plugins/wptouch-pro/">WPtouch Pro</a> plugin that I eluded to earlier. Out of the box, it’s pretty much configured in the same way it is on WordPress.com, so it took little effort to get it working. I do have some issues with the plugin itself, but none relavent to someone who simply wants to port a blog from WordPress.com to a WordPress.org install.</p>
+
+<p>Porting the data itself from WordPress.com to the new WordPress.org instance was for the most part painless. WordPress comes with a built in export tool that allows for the export of all post data (including custom post types) from a WordPress install, and this export can be easily imported into a WordPress.org install using the WordPress Importer plugin. However, there isn’t any  mechanism to transfer theme, site, and plugin configuration from WordPress.com, so this ends up being a manual process filled with tedium and potential for error. I wrote a script to configure most of this for me during development, but there isn’t a good way, that I’m aware of, to automate the entire ordeal. To redirect users from the WordPress.com blog to the new WordPress.org instance, the client purchase WordPress.com’s <a href="http://en.support.wordpress.com/site-redirect/">site redirect</a> upgrade. Unfortunately, it’s not free costing $12.00 per year, but it does work.</p>
+
+<p>In the end, the blog migration from WordPress.com to a self-hosted WordPress.org site was a success, albeit not quite the smooth transition I’d hoped for. The only feature missed from WordPress.com was it’s slideshow support, but I imagine with some additional effort that issue could be addressed. For those looking into porting a WordPress.com blog themselves, here are the plugins I ended up using: <a href="http://wordpress.org/extend/plugins/jetpack/">Jetpack</a>, <a href="http://wordpress.org/extend/plugins/mailpress/">MailPress</a>, <a href="http://wordpress.org/extend/plugins/akismet/">Akismet</a>, <a href="http://www.bravenewcode.com/store/plugins/wptouch-pro/">WPtouch Pro</a>, and <a href="http://wordpress.org/extend/plugins/simple-twitter-connect/">Simple Twitter Connect</a> with the STC – Publish add-on.</p>
+</div>
+
+
+  <footer>
+    <p class="meta">
+      
+  
+
+<span class="byline author vcard">Posted by <span class="fn">John Trimble</span></span>
+
+      
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2011-04-24T07:08:00-07:00" pubdate data-updated="true">Apr 24<span>th</span>, 2011</time>
+      
+
+
+    </p>
+    
+      <div class="sharing">
+  
+  <a href="//twitter.com/share" class="twitter-share-button" data-url="http://johntrimble.github.io/blog/2011/04/24/migrating-from-wordpress-com-to-wordpress-org/" data-via="johntrimble" data-counturl="http://johntrimble.github.io/blog/2011/04/24/migrating-from-wordpress-com-to-wordpress-org/" >Tweet</a>
+  
+  
+  
+</div>
+
+    
+    <p class="meta">
+      
+      
+        <a class="basic-alignment right" href="/blog/2013/07/11/building-an-incremental-rotary-encoder/" title="Next Post: Building a Quadrature Rotary Encoder">Building a Quadrature Rotary Encoder &raquo;</a>
+      
+    </p>
+  </footer>
+</article>
+
+</div>
+
+<aside class="sidebar">
+  
+    <section>
+  <h1>Recent Posts</h1>
+  <ul id="recent_posts">
+    
+      <li class="post">
+        <a href="/blog/2013/07/11/building-an-incremental-rotary-encoder/">Building a Quadrature Rotary Encoder</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2011/04/24/migrating-from-wordpress-com-to-wordpress-org/">Migrating From WordPress.com to WordPress.org</a>
+      </li>
+    
+  </ul>
+</section>
+<section>
+  <h1>Tweets</h1>
+<a class="twitter-timeline" height="300" width="100%" data-tweet-limit="2" data-dnt="true" href="https://twitter.com/johntrimble" data-widget-id="353888304896307200" data-chrome="noheader noscrollbar transparent">Tweets by @johntrimble</a>
+<script>!function(d,s,id){var js,fjs=d.getElementsByTagName(s)[0],p=/^http:/.test(d.location)?'http':'https';if(!d.getElementById(id)){js=d.createElement(s);js.id=id;js.src=p+"://platform.twitter.com/widgets.js";fjs.parentNode.insertBefore(js,fjs);}}(document,"script","twitter-wjs");</script>
+</section>
+
+<section>
+  <h1>GitHub Repos</h1>
+  <ul id="gh_repos">
+    <li class="loading">Status updating...</li>
+  </ul>
+  
+  <a href="https://github.com/johntrimble">@johntrimble</a> on GitHub
+  
+  <script type="text/javascript">
+    $(document).ready(function(){
+        if (!window.jXHR){
+            var jxhr = document.createElement('script');
+            jxhr.type = 'text/javascript';
+            jxhr.src = '/javascripts/libs/jXHR.js';
+            var s = document.getElementsByTagName('script')[0];
+            s.parentNode.insertBefore(jxhr, s);
+        }
+
+        github.showRepos({
+            user: 'johntrimble',
+            count: 0,
+            skip_forks: true,
+            target: '#gh_repos'
+        });
+    });
+  </script>
+  <script src="/javascripts/github.js" type="text/javascript"> </script>
+</section>
+
+
+
+
+
+  
+</aside>
+
+
+    </div>
+  </div>
+  <footer role="contentinfo"><p>
+  Copyright &copy; 2014 - John Trimble -
+  <span class="credit">Powered by <a href="http://octopress.org">Octopress</a></span>
+</p>
+
+</footer>
+  
+
+
+
+
+
+
+
+  <script type="text/javascript">
+    (function(){
+      var twitterWidgets = document.createElement('script');
+      twitterWidgets.type = 'text/javascript';
+      twitterWidgets.async = true;
+      twitterWidgets.src = '//platform.twitter.com/widgets.js';
+      document.getElementsByTagName('head')[0].appendChild(twitterWidgets);
+    })();
+  </script>
+
+
+
+
+
+</body>
+</html>

@@ -5,13 +5,11 @@
 <!--[if (gt IE 8)|(gt IEMobile 7)|!(IEMobile)|!(IE)]><!--><html class="no-js" lang="en"><!--<![endif]-->
 <head>
   <meta charset="utf-8">
-  <title>Blog Archive - John Trimble</title>
+  <title>Papers - John Trimble</title>
   <meta name="author" content="John Trimble">
 
   
-  <meta name="description" content="Blog Archive 2013 Building a Quadrature Rotary Encoder
-Jul 11 2013 2011 Migrating From WordPress.com to WordPress.org
-Apr 24 2011 Recent Posts &hellip;">
+  <meta name="description" content="Papers Feb 11th, 2014 Code Compaction of an Operating System Kernel Download: pdf Authors: Haifeng He, John Trimble, Somu Perianayagam, Saumya &hellip;">
   
 
   <!-- http://t.co/dKP3o1e -->
@@ -20,7 +18,7 @@ Apr 24 2011 Recent Posts &hellip;">
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   
-  <link rel="canonical" href="http://johntrimble.github.io/blog/archives">
+  <link rel="canonical" href="http://johntrimble.github.io/papers">
   <link href="/favicon.png" rel="icon">
   <link href="/stylesheets/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
   <link href="/atom.xml" rel="alternate" title="John Trimble" type="application/atom+xml">
@@ -70,40 +68,70 @@ Apr 24 2011 Recent Posts &hellip;">
 <article role="article">
   
   <header>
-    <h1 class="entry-title">Blog Archive</h1>
-    
+    <h1 class="entry-title">Papers</h1>
+    <p class="meta">
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2014-02-11T00:07:00-07:00" pubdate data-updated="true">Feb 11<span>th</span>, 2014</time></p>
   </header>
   
-  <div id="blog-archives">
+  <h2>Code Compaction of an Operating System Kernel</h2>
+
+<p>Download: <a href="/assets/pages/papers/code_compaction_kernel.pdf">pdf</a> <br>
+Authors: Haifeng He, John Trimble, Somu Perianayagam, Saumya Debray, Gregory Andrews</p>
+
+<h3>Abstract</h3>
+
+<p>General-purpose operating systems, such as Linux, are increasingly being used in embedded systems. Computational resources are usually limited, and embedded processors often have a limited amount of memory. This makes code size especially important. This paper describes techniques for automatically reducing the memory footprint of general-purpose operating systems on embedded platforms. The problem is complicated by the fact that kernel code tends to be quite different from ordinary application code, including the presence of significant amount of hand-written assembly code, multiple entry points, implicit control flow paths involving interrupt handlers, and a significant amount of indirect control flow via function pointers. We use a novel “approximate decompilation” technique to apply source-level program analysis to hand-written assembly code. A prototype implementation of our ideas, applied to a Linux kernel that has been configured to exclude unneccessary code, obtains a code size reduction of over 25%.</p>
+
+<h2>Combining High Level Alias Analysis with Low Level Code Compaction of the Linux Kernel</h2>
+
+<p>Download: <a href="/assets/pages/papers/honors_thesis.pdf">pdf</a> <br>
+Authors: John Trimble</p>
+
+<h3>Abstract</h3>
+
+<p>The limited resources of embedded devices make it both costly and difficult to deploy with general-purpose operating systems such as Linux. The use of low level code compaction techniques can reduce the code size of the kernel to better suit the environment of an embedded device. However, using low level code compaction has typically precluded the use of high level aliasing information. This makes it difficult to resolve potential targets of indirect calls and which in turn reduces the degree of code compaction. This honors thesis discusses a method for combining high level aliasing information with low level code compaction of the Linux kernel by having the high level analysis construct part of the kernel call graph.</p>
+
+  
+    <footer>
+      <p class="meta">
+        
+        
+
+
+
+
+
 
 
 
   
-  <h2>2013</h2>
 
-<article>
+
+<time datetime="2014-02-11T00:07:00-07:00" pubdate data-updated="true">Feb 11<span>th</span>, 2014</time>
+        
+      </p>
+      
+        <div class="sharing">
   
-<h1><a href="/blog/2013/07/11/building-an-incremental-rotary-encoder/">Building a Quadrature Rotary Encoder</a></h1>
-<time datetime="2013-07-11T22:42:00-07:00" pubdate><span class='month'>Jul</span> <span class='day'>11</span> <span class='year'>2013</span></time>
-
-
-</article>
-
-
-
+  <a href="//twitter.com/share" class="twitter-share-button" data-url="http://johntrimble.github.io/papers/index.html" data-via="johntrimble" data-counturl="http://johntrimble.github.io/papers/index.html" >Tweet</a>
   
-  <h2>2011</h2>
-
-<article>
   
-<h1><a href="/blog/2011/04/24/migrating-from-wordpress-com-to-wordpress-org/">Migrating From WordPress.com to WordPress.org</a></h1>
-<time datetime="2011-04-24T07:08:00-07:00" pubdate><span class='month'>Apr</span> <span class='day'>24</span> <span class='year'>2011</span></time>
-
-
-</article>
-
+  
 </div>
 
+      
+    </footer>
   
 </article>
 
