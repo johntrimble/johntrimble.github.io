@@ -1,9 +1,8 @@
 ---
 layout: page
 title: "papers"
-date: 2014-02-11 00:07
 comments: true
-sharing: true
+sharing: false
 footer: true
 ---
 ## Code Compaction of an Operating System Kernel
