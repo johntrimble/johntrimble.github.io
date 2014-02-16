@@ -9,7 +9,7 @@
   <meta name="author" content="John Trimble">
 
   
-  <meta name="description" content="Today I document the saga of building an quadrature rotary encoder. I undertook the project as a way to become more familiar with electronics. My &hellip;">
+  <meta name="description" content="About a year ago, I was listening to a talk by Chris Granger on how he leveraged the Entity Component System (ECS) architectural pattern when &hellip;">
   
 
   <!-- http://t.co/dKP3o1e -->
@@ -66,6 +66,154 @@
     <div id="content">
       <div class="blog-index">
   
+  
+  
+    <article>
+      
+  <header>
+    
+      <h1 class="entry-title"><a href="/blog/2014/01/14/entity-component-system/">Entity Component System</a></h1>
+    
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2014-01-14T11:55:23-07:00" pubdate data-updated="true">Jan 14<span>th</span>, 2014</time>
+        
+      </p>
+    
+  </header>
+
+
+  <div class="entry-content"><p>About a year ago, I was listening to a <a href="http://www.youtube.com/watch?v=V1Eu9vZaDYw">talk</a> by Chris Granger on how he leveraged the Entity Component System (ECS) architectural pattern when building LightTable. I&rsquo;d never heard of the pattern before, probably because it typically finds its use in video games, and I don&rsquo;t really do anything in the way of video game development. Chris did a pretty good job selling the approach, so I decided to try it for myself. A couple of months ago, I started working on an Asteroids-like <a href="https://github.com/johntrimble/asteroids">game</a> as a side project to evaluate this pattern, my particular interest being its effectiveness at facilitating code reuse, decoupling, and testing. It&rsquo;s not done, but I&rsquo;m sufficiently far enough along to get a sense of how the pattern plays out in practice. I won&rsquo;t go over what the ECS is (check out Chris&rsquo;s talk or the Wikipedia <a href="http://en.wikipedia.org/wiki/Entity_component_system">article</a> if you&rsquo;re interested in that), but instead just give a brief evaluation of its effectiveness.</p>
+
+<h2>Code Reuse</h2>
+
+<p>This does turn out to be a real win. By simply adding a new property to an entity, I can endow it with new behavior. For example, by giving the camera entity a <code>movement</code> component, I can make it so that it rotates or scrolls. I can also make the ship explode in the same manner as the asteroids by giving it an <code>asteroid-explosive-death</code> component. This means that once I add a new set of components and systems, I can take advantage of them on any entity that I&rsquo;d like. Definitely a big win for code reuse!</p>
+
+<h2>Decoupling</h2>
+
+<p>The story here is a bit more mixed. On the one hand, the different systems do not directly call each other, and this leads some people to conclude that they aren&rsquo;t coupled, but lets take a look at that. Here&rsquo;s the function that takes a world at time t<sub>1</sub> and generates a world at time t<sub>2</sub>:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+</pre></td><td class='code'><pre><code class='clojure'><span class='line'><span class="p">(</span><span class="kd">defn </span><span class="nv">next-world</span> <span class="p">[</span><span class="nv">world</span><span class="p">]</span>
+</span><span class='line'>  <span class="p">(</span><span class="nb">-&gt; </span><span class="nv">world</span>
+</span><span class='line'>      <span class="nv">keyboard/keyboard-system</span>
+</span><span class='line'>      <span class="nv">intents/intent-system</span>
+</span><span class='line'>      <span class="nv">intents/rotation-system</span>
+</span><span class='line'>      <span class="nv">intents/thrust-system</span>
+</span><span class='line'>      <span class="nv">projectile/firing-system</span>
+</span><span class='line'>      <span class="nv">physics/physics-system</span>
+</span><span class='line'>      <span class="nv">physics/collision-detection-system</span>
+</span><span class='line'>      <span class="nv">projectile/projectile-collision-resolution-system</span>
+</span><span class='line'>      <span class="nv">physics/collision-physics-system</span>
+</span><span class='line'>      <span class="nv">health/impulse-damage-system</span>
+</span><span class='line'>      <span class="nv">health/damage-resolution-system</span>
+</span><span class='line'>      <span class="nv">asteroids/asteroid-death-system</span>
+</span><span class='line'>      <span class="nv">health/health-bar-system</span>
+</span><span class='line'>      <span class="nv">core/ttl-system</span><span class="p">))</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>In general, it looks pretty simple. Each system takes a world state as a parameter and produces a world state as its value. Then the ability to move a game state forward is realized by composing the various systems together. It&rsquo;s in that composing bit where the complexity hides: the order in which the systems are composed together matters! For example, the <code>impulse-damage-system</code> must be applied after the <code>collision-physics-system</code> as the former is looking for entities with an <code>impulse</code> component which is added by the <code>collision-physics-system</code>. One cannot simply look at the systems in isolation, but must have an awareness of how the systems interact with each other, which increases the cognitive load when adding, modifying, or removing systems. On the plus side, the systems are at least loosely coupled as they just care about the world being in some state, not about who put it in that state.</p>
+
+<p>Of course, one could argue that this complexity is inherent in the problem (i.e. there&rsquo;s just no avoiding it), or not a failing of entity component system, but rather an issue with the way I applied that pattern. The important thing here is to keep in mind that the lack of a direct function call doesn&rsquo;t necessarily mean two parts of a system are decoupled, and it&rsquo;s valuable to identify these areas of complexity because they help you understand where the problems are going to arise.</p>
+
+<h2>Testability</h2>
+
+<p>This turned out to be a huge win. Since none of the systems call each other, each system only cares about the world state passed into it, and none of them (at least none of the ones listed above) have any side effects, testing is a breeze! Here&rsquo;s what one of my unit tests for the <code>physics-system</code> looks like:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+</pre></td><td class='code'><pre><code class='clojure'><span class='line'><span class="p">(</span><span class="k">let </span><span class="p">[</span><span class="nv">a</span> <span class="p">(</span><span class="nf">core/entity</span> <span class="p">(</span><span class="nf">core/movement</span> <span class="p">[</span><span class="mi">1</span> <span class="mf">0.5</span><span class="p">]</span>
+</span><span class='line'>                                    <span class="p">[</span><span class="mi">2</span> <span class="mi">1</span><span class="p">]</span>
+</span><span class='line'>                                    <span class="nv">math/infinity</span>
+</span><span class='line'>                                    <span class="mi">0</span>
+</span><span class='line'>                                    <span class="mi">0</span>
+</span><span class='line'>                                    <span class="nv">math/infinity</span><span class="p">)</span>
+</span><span class='line'>                     <span class="p">(</span><span class="nf">core/position</span> <span class="p">[</span><span class="mi">5</span> <span class="mi">5</span><span class="p">])</span>
+</span><span class='line'>                     <span class="p">(</span><span class="nf">core/aabb</span> <span class="p">[</span><span class="mi">4</span> <span class="mi">4</span><span class="p">]</span> <span class="p">[</span><span class="mi">6</span> <span class="mi">6</span><span class="p">]))</span>
+</span><span class='line'>      <span class="nv">world</span> <span class="p">(</span><span class="nf">core/assoc-entity</span> <span class="p">{}</span> <span class="nv">a</span><span class="p">)</span>
+</span><span class='line'>      <span class="nv">a</span> <span class="p">(</span><span class="nf">core/get-entity</span> <span class="nv">world</span> <span class="p">(</span><span class="nf">core/get-id</span> <span class="nv">a</span><span class="p">))</span>
+</span><span class='line'>      <span class="nv">world-new</span> <span class="p">(</span><span class="nf">physics/physics-system</span> <span class="nv">world</span><span class="p">)</span>
+</span><span class='line'>      <span class="nv">a-new</span> <span class="p">(</span><span class="nf">core/get-entity</span> <span class="nv">world-new</span> <span class="p">(</span><span class="nf">core/get-id</span> <span class="nv">a</span><span class="p">))]</span>
+</span><span class='line'>  <span class="p">(</span><span class="nf">describe</span> <span class="s">&quot;physics-system&quot;</span>
+</span><span class='line'>            <span class="p">(</span><span class="nf">it</span> <span class="s">&quot;should update velocity by acceleration&quot;</span>
+</span><span class='line'>                <span class="p">(</span><span class="nf">should=</span> <span class="p">[</span><span class="mi">3</span> <span class="mf">1.5</span><span class="p">]</span> <span class="p">(</span><span class="nf">core/get-velocity</span> <span class="nv">a-new</span><span class="p">)))</span>
+</span><span class='line'>            <span class="p">(</span><span class="nf">it</span> <span class="s">&quot;should update velocity before updating position&quot;</span>
+</span><span class='line'>                <span class="p">(</span><span class="nf">should-not=</span> <span class="p">[</span><span class="mi">7</span> <span class="mi">6</span><span class="p">]</span> <span class="p">(</span><span class="nf">core/get-position</span> <span class="nv">a-new</span><span class="p">)))</span>
+</span><span class='line'>            <span class="p">(</span><span class="nf">it</span> <span class="s">&quot;should update the position&quot;</span>
+</span><span class='line'>                <span class="p">(</span><span class="nf">should=</span> <span class="p">[</span><span class="mi">8</span> <span class="mf">6.5</span><span class="p">]</span> <span class="p">(</span><span class="nf">core/get-position</span> <span class="nv">a-new</span><span class="p">)))</span>
+</span><span class='line'>            <span class="p">(</span><span class="nf">it</span> <span class="s">&quot;should provide a valid value for rotation&quot;</span>
+</span><span class='line'>                <span class="p">(</span><span class="nf">should-not</span> <span class="p">(</span><span class="nf">js/isNaN</span> <span class="p">(</span><span class="nf">core/get-rotation</span> <span class="nv">a-new</span><span class="p">))))</span>
+</span><span class='line'>            <span class="p">(</span><span class="nf">it</span> <span class="s">&quot;should provide a valid value for angular components&quot;</span>
+</span><span class='line'>                <span class="p">(</span><span class="nf">should-not</span> <span class="p">(</span><span class="nf">js/isNaN</span> <span class="p">(</span><span class="nf">core/get-angular-velocity</span> <span class="nv">a-new</span><span class="p">)))</span>
+</span><span class='line'>                <span class="p">(</span><span class="nf">should-not</span> <span class="p">(</span><span class="nf">js/isNaN</span> <span class="p">(</span><span class="nf">core/get-angular-acceleration</span> <span class="nv">a-new</span><span class="p">))))</span>
+</span><span class='line'>            <span class="p">(</span><span class="nf">it</span> <span class="s">&quot;should update the aabb&quot;</span>
+</span><span class='line'>                <span class="p">(</span><span class="nf">should=</span> <span class="p">[[</span><span class="mi">7</span> <span class="mf">5.5</span><span class="p">]</span> <span class="p">[</span><span class="mi">9</span> <span class="mf">7.5</span><span class="p">]]</span> <span class="p">(</span><span class="nf">core/get-aabb</span> <span class="nv">a</span><span class="p">)))))</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Notice how there aren&rsquo;t any mocks. I just build a world state, call the system, and verify that the new world state looks the way it should. I wish that everything I did was this straight forward to test!</p>
+
+<h2>Conclusion</h2>
+
+<p>In general, I found that entity component system, as an architectural pattern, really shined in regards to code reuse and testability. I did not find the different systems as insulated from each other as I originally expected, but nonetheless, the complexity is manageable, especially with how easy testing is. My next step&mdash;other than actually finishing the game&mdash;is to investigate its viability in contexts outside of game development. LightTable just recently became open source, and since Chris Granger&rsquo;s talk on how he used this pattern in LightTable got me interested in the first place, I&rsquo;ll probably start there by analyzing its source code.</p>
+</div>
+  
+  
+
+
+    </article>
   
   
     <article>
@@ -258,6 +406,10 @@
     <section>
   <h1>Recent Posts</h1>
   <ul id="recent_posts">
+    
+      <li class="post">
+        <a href="/blog/2014/01/14/entity-component-system/">Entity Component System</a>
+      </li>
     
       <li class="post">
         <a href="/blog/2013/07/11/building-an-incremental-rotary-encoder/">Building a Quadrature Rotary Encoder</a>
