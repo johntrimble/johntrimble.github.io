@@ -1,7 +1,7 @@
 ---
 layout: page
 title: "papers"
-comments: true
+comments: false
 sharing: false
 footer: true
 ---
