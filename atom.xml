@@ -4,7 +4,7 @@
   <title><![CDATA[John Trimble]]></title>
   <link href="http://johntrimble.github.io/atom.xml" rel="self"/>
   <link href="http://johntrimble.github.io/"/>
-  <updated>2014-02-20T11:01:30-07:00</updated>
+  <updated>2014-05-03T18:23:19-07:00</updated>
   <id>http://johntrimble.github.io/</id>
   <author>
     <name><![CDATA[John Trimble]]></name>
@@ -12,6 +12,15 @@
   </author>
   <generator uri="http://octopress.org/">Octopress</generator>
 
+  
+  <entry>
+    <title type="html"><![CDATA[Improving ClojureScript Performance]]></title>
+    <link href="http://johntrimble.github.io/blog/2014/05/03/improving-clojurescript-performance/"/>
+    <updated>2014-05-03T17:04:48-07:00</updated>
+    <id>http://johntrimble.github.io/blog/2014/05/03/improving-clojurescript-performance</id>
+    <content type="html"><![CDATA[<p>Just noticed one of my <a href="http://stackoverflow.com/a/21845876/1541713">answers</a> on StackOverflow got some attention&mdash;well okay, one vote, but it&rsquo;s better than zero. I&rsquo;m not sure how relevant it still is given how fast ClojureScript seems to move, but I did include the code for my benchmarks, so hopefully at least that is still useful.</p>
+]]></content>
+  </entry>
   
   <entry>
     <title type="html"><![CDATA[Entity Component System]]></title>
