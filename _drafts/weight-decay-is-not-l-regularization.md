@@ -160,7 +160,7 @@ To summarize the key points:
 
 1. With standard SGD, weight decay and L₂ regularization are mathematically equivalent.
 2. With adaptive optimizers like Adam and RMSprop, they diverge significantly.
-3. True weight decay applies a uniform shrinkage to all parameters (see aforementioned Loshchilov & Hutter [paper](https://arxiv.org/abs/1711.05101 "Decoupled Weight Decay Regularization, Loshchilov & Hutter, 2018")), while L₂ regularization with adaptive optimizers leads to parameter-specific decay that varies with gradient history.
+3. True weight decay applies a uniform shrinkage to all parameters (see aforementioned Loshchilov & Hutter [paper](https://arxiv.org/abs/1711.05101 "Decoupled Weight Decay Regularization, Loshchilov & Hutter, 2017")), while L₂ regularization with adaptive optimizers leads to parameter-specific decay that varies with gradient history.
 4. In PyTorch, use AdamW or set `decoupled_weight_decay=True` with Adam to implement proper weight decay.
 
 The next time you're training a model with an adaptive optimizer like Adam, remember to use proper decoupled weight decay instead of L₂ regularization. Your model's performance might thank you for it!
