@@ -22,14 +22,14 @@ Here, $\Theta$ is a vector representing the weights of our model. At each step, 
 
 ## Understanding L₂ Regularization
 
-With that context, let's talk about L₂ regularization. L₂ regularization is a technique to prevent overfitting, which is when a model learns the training data too well, including its noise, and fails to generalize to new, unseen data. It works by adding a penalty term to the loss function. This new term is the sum of the squares of all the weights, multiplied by a small scalar constant $\lambda$:
+With that context, let's talk about L₂ regularization. L₂ regularization is a technique to prevent overfitting, which is when a model learns the training data too well and fails to generalize to new, unseen data. It works by adding a penalty term to the loss function. This new term is the sum of the squares of all the weights, multiplied by a small scalar constant $\lambda$:
 
 $$
 L_{total}(\Theta) = L_{data}(\Theta) + \frac{\lambda}{2} \|\Theta\|_2^2
 $$
 
-The $\|\Theta\|_2^2$ term is the squared L₂ norm of the weight vector, which is simply the sum of the squares of all its elements. The $\lambda$ parameter controls the strength of the regularization. A larger $\lambda$ means a stronger penalty for large weights, which encourages the model to keep its weights small.
-The intuition is that models with smaller weights are simpler and less likely to overfit.
+The $\lVert\Theta\rVert_2^2$ term is the squared L₂ norm of the weight vector, $\Theta$, which is simply the sum of the squares of all its elements. The $\lambda$ parameter controls the strength of the regularization. A larger $\lambda$ means a stronger penalty for large weights, which encourages the model to keep its weights small.
+The intuition behind L₂ regularization is that by keeping model weights small, no individual weight can exert disproportionate influence on the output, thereby reducing the model’s tendency to overfit.
 
 ## What is Weight Decay?
 
@@ -39,7 +39,7 @@ $$
 \Theta_{t+1} = (1 - \alpha \lambda)\Theta_t - \alpha \cdot \nabla L_{data}(\Theta_t)
 $$
 
-The $( 1 - \alpha \lambda)$ term is generally a value a little less than 1 which causes the weights to "decay" exponentially over time, hence the name.
+Again we have a $\lambda$ term, in this case to control the strength of the weight decay. Larger values of $\lambda$ cause the weights to shrink more aggressively. The $( 1 - \alpha \lambda)$ term is generally a value a little less than 1 which causes the weights to "decay" exponentially over time, hence the name.
 
 ## Why Were They Considered the Same?
 
@@ -64,9 +64,9 @@ $$
 
 Look at that, the update steps are identical! This is why L₂ regularization and weight decay were historically treated as the same thing, especially in the context of plain stochastic gradient descent (SGD). In fact, many deep learning libraries implemented weight decay as L₂ regularization in their optimizers, which further reinforced this misconception.
 
-If the math works out the same, then what's the problem? Issues arise when we introduce adaptive optimizers like RMSprop and Adam. These optimizers adjust the learning rate for each parameter based on its historical gradients. This is where the equivalence breaks down. The paper "Decoupled Weight Decay Regularization" by Loshchilov and Hutter explains this in detail. They focus on Adam, but I'll use RMSprop as an example since it's a bit simpler to grasp.
+If the math works out the same, then what's the problem? Issues arise when we introduce adaptive optimizers like RMSprop and Adam. These optimizers adjust the learning rate for each parameter based on its historical gradients. This is where the equivalence breaks down. The paper ["Decoupled Weight Decay Regularization"](https://arxiv.org/abs/1711.05101) by Loshchilov and Hutter explains this in detail. They focus on Adam, but I'll use RMSprop as an example since it's a bit simpler to grasp.
 
-In SGD, the weights are updated by simply subtracting the gradient of the loss function, scaled by the same learning rate for all parameters. Sometimes, though, the gradient can be noisy, leading to some suboptimal updates. RMSprop addresses this by maintaining a running average of the squared gradients, which allows it to adaptively adjust the learning rate for each parameter. The update step looks something like this:
+In SGD, weights are updated by subtracting the gradient of the loss function scaled by a fixed learning rate. However, gradients can be noisy, and using the same learning rate for all parameters may lead to inefficient or unstable updates. RMSprop improves upon this by maintaining an exponentially decaying average of the squared gradients for each parameter. This moving average is used to scale the gradient, effectively adapting the learning rate per parameter. As a result, RMSprop helps stabilize training and improve convergence, especially in settings with noisy or sparse gradients. The update step looks something like this:
 
 $$
 \begin{align*}
@@ -110,7 +110,7 @@ V_t &= \beta V_{t-1} + (1 - \beta) (\nabla L_{data}(\Theta_t))^2 \\
 \end{align*}
 $$
 
-## Implementing Proper Weight Decay in PyTorch
+## Proper Weight Decay in PyTorch
 
 Great! Now that we know weight decay and L₂ regularization are not the same thing, and weight decay is probably the thing we actually want, how do we use it in PyTorch? You might think that using the `weight_decay` parameter in PyTorch's optimizers like Adam or RMSprop would do the trick, but that's not always the case. Even though this issue was thoroughly worked out back in 2017, PyTorch still preserves this bug in many instances for posterity, so that future generations may know our suffering. Luckily, the docs for each optimizer will tell you how the `weight_decay` parameter is implemented. For example, in the [Adam](https://docs.pytorch.org/docs/stable/generated/torch.optim.Adam.html) optimizer, `weight_decay` is implemented as L₂ regularization (probably not what you want). If you want to use decoupled weight decay, you need to use the [AdamW](https://docs.pytorch.org/docs/stable/generated/torch.optim.AdamW.html) optimizer or pass the `decoupled_weight_decay` argument to the `Adam` optimizer:
 
@@ -120,11 +120,20 @@ import torch.optim as optim
 
 # Using AdamW with decoupled weight decay
 model = ...  # Your model here
-optimizer = optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.01)
+optimizer = optim.AdamW(
+    model.parameters(),
+    lr=0.001,
+    weight_decay=0.01
+)
 
 # Alternatively, using Adam with decoupled weight decay
 model = ...  # Your model here
-optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=0.01, decoupled_weight_decay=True)
+optimizer = optim.Adam(
+    model.parameters(),
+    lr=0.001,
+    weight_decay=0.01,
+    decoupled_weight_decay=True
+)
 ```
 
 As far as I'm aware, PyTorch does not come with a built-in RMSprop optimizer that supports decoupled weight decay, but if you have your heart set on using RMSprop, you could just use `AdamW` and set the momentum coefficient, the first element of the `betas` parameter tuple, to 0, which will essentially give you RMSprop with decoupled weight decay:
@@ -135,7 +144,12 @@ import torch.optim as optim
 
 # Using AdamW with momentum set to 0 for RMSprop-like behavior
 model = ...  # Your model here
-optimizer = optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.01, betas=(0, 0.99))
+optimizer = optim.AdamW(
+    model.parameters(),
+    lr=0.001,
+    weight_decay=0.01,
+    betas=(0, 0.99)
+)
 ```
 
 ## Conclusion: Getting Weight Decay Right Matters
@@ -146,7 +160,7 @@ To summarize the key points:
 
 1. With standard SGD, weight decay and L₂ regularization are mathematically equivalent.
 2. With adaptive optimizers like Adam and RMSprop, they diverge significantly.
-3. True weight decay applies a uniform shrinkage to all parameters, while L₂ regularization with adaptive optimizers leads to parameter-specific decay that varies with gradient history.
+3. True weight decay applies a uniform shrinkage to all parameters (see aforementioned Loshchilov & Hutter [paper](https://arxiv.org/abs/1711.05101 "Decoupled Weight Decay Regularization, Loshchilov & Hutter, 2018")), while L₂ regularization with adaptive optimizers leads to parameter-specific decay that varies with gradient history.
 4. In PyTorch, use AdamW or set `decoupled_weight_decay=True` with Adam to implement proper weight decay.
 
 The next time you're training a model with an adaptive optimizer like Adam, remember to use proper decoupled weight decay instead of L₂ regularization. Your model's performance might thank you for it!
