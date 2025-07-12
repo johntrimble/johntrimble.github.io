@@ -6,7 +6,7 @@ author: john
 ---
 When it comes to training neural networks, understanding the nuances of optimization techniques is crucial for achieving the best performance. One common area of confusion is the difference between **weight decay** and **L₂ regularization**. While they may seem similar, they serve different purposes and behave differently, especially when using adaptive optimizers like Adam or RMSprop.
 
-We used to commonly treat **weight decay** and **L₂ regularization** as interchangeable terms in machine learning. In fact, I was taught they were the same thing when I took Andrew Ng's Machine Learning course all the way back in 2014. While it made sense at the time, this conflation caused numerous issues, especially with the rise of adaptive optimizers like Adam. Unfortunately, this misunderstanding still persists today with Google's AI search results saying "Weight decay, also known as L₂ regularization...", and blog posts using the wrong version of PyTorch's Adam optimizer. Here I'll explain why weight decay and L₂ regularization are not the same, especially when using adaptive optimizers like RMSprop or Adam, and how to properly use weight decay in PyTorch.
+We once treated **weight decay** and **L₂ regularization** as interchangeable terms in machine learning. In fact, this is exactly what I was taught over 10 years ago. While it made sense at the time, this conflation caused numerous issues, especially with the rise of adaptive optimizers like Adam. Unfortunately, this misunderstanding still persists today with Google's AI search results saying "Weight decay, also known as L₂ regularization...", and blog posts using the wrong version of PyTorch's Adam optimizer. Here I'll explain why weight decay and L₂ regularization are not the same, especially when using adaptive optimizers like RMSprop or Adam, and how to properly use weight decay in PyTorch.
 
 ## Neural Network Optimization Basics
 
@@ -64,7 +64,7 @@ $$
 
 Look at that, the update steps are identical! This is why L₂ regularization and weight decay were historically treated as the same thing, especially in the context of plain stochastic gradient descent (SGD). In fact, many deep learning libraries implemented weight decay as L₂ regularization in their optimizers, which further reinforced this misconception.
 
-If the math works out the same, then what's the problem? Issues arise when we introduce adaptive optimizers like RMSprop and Adam. These optimizers adjust the learning rate for each parameter based on its historical gradients. This is where the equivalence breaks down. The paper ["Decoupled Weight Decay Regularization"](https://arxiv.org/abs/1711.05101) by Loshchilov and Hutter explains this in detail. They focus on Adam, but I'll use RMSprop as an example since it's a bit simpler to grasp.
+If the math works out the same, then what's the problem? Issues arise when we introduce adaptive optimizers like RMSprop and Adam. These optimizers adjust the learning rate for each parameter based on its historical gradients. This is where the equivalence breaks down. The paper [Decoupled Weight Decay Regularization (Loshchilov & Hutter, 2017)](https://arxiv.org/abs/1711.05101) explains this in detail. They focus on Adam, but I'll use RMSprop as an example since it's a bit simpler to grasp.
 
 In SGD, weights are updated by subtracting the gradient of the loss function scaled by a fixed learning rate. However, gradients can be noisy, and using the same learning rate for all parameters may lead to inefficient or unstable updates. RMSprop improves upon this by maintaining an exponentially decaying average of the squared gradients for each parameter. This moving average is used to scale the gradient, effectively adapting the learning rate per parameter. As a result, RMSprop helps stabilize training and improve convergence, especially in settings with noisy or sparse gradients. The update step looks something like this:
 
@@ -160,7 +160,7 @@ To summarize the key points:
 
 1. With standard SGD, weight decay and L₂ regularization are mathematically equivalent.
 2. With adaptive optimizers like Adam and RMSprop, they diverge significantly.
-3. True weight decay applies a uniform shrinkage to all parameters (see aforementioned Loshchilov & Hutter [paper](https://arxiv.org/abs/1711.05101 "Decoupled Weight Decay Regularization, Loshchilov & Hutter, 2017")), while L₂ regularization with adaptive optimizers leads to parameter-specific decay that varies with gradient history.
+3. True weight decay applies a uniform shrinkage to all parameters, while L₂ regularization with adaptive optimizers leads to parameter-specific decay that varies with gradient history (see [Decoupled Weight Decay Regularization (Loshchilov & Hutter, 2017)](https://arxiv.org/abs/1711.05101)).
 4. In PyTorch, use AdamW or set `decoupled_weight_decay=True` with Adam to implement proper weight decay.
 
 The next time you're training a model with an adaptive optimizer like Adam, remember to use proper decoupled weight decay instead of L₂ regularization. Your model's performance might thank you for it!
