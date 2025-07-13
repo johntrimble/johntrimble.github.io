@@ -37,7 +37,6 @@ def latex_to_png(latex, output_path, filename):
             'python3',
             'convert_latex_equation.py',
             '--px-size', '20',
-            '--retina',
             '-o', png_path
         ], input=latex.encode('utf-8'), check=True, cwd=os.path.dirname(__file__))
     except subprocess.CalledProcessError:
