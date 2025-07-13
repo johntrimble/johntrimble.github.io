@@ -49,6 +49,10 @@ Contributions (_pull requests_, _issues_, and _discussions_) are what make the o
 to learn, inspire, and create. Any contributions you make are greatly appreciated.
 For details, see the "[Contributing Guidelines][contribute-guide]".
 
+## LaTeX to Medium Converter
+
+This repository includes tools for converting LaTeX-heavy Markdown blog posts for use on Medium in the `convert_to_medium` directory. See [convert_to_medium/README.md](convert_to_medium/README.md) for detailed instructions.
+
 ## Credits
 
 ### Contributors
