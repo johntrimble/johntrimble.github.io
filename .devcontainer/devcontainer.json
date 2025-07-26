@@ -5,6 +5,18 @@
 	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
 	"image": "mcr.microsoft.com/devcontainers/jekyll:2-bookworm",
 
+	"appPort": [4000, 5500],
+	"runArgs": ["--network=host"],
+	//   "portsAttributes": {
+	// 	"4000": {
+	// 		"label": "Application Port",
+	// 		"visibility": "public"
+	// 	}
+	// },
+	"mounts": [
+        "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,readonly"
+	],
+
 	// Features to add to the dev container. More info: https://containers.dev/features.
 	// "features": {},
 	"features": {
