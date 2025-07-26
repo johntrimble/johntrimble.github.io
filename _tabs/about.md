@@ -23,11 +23,11 @@ I currently lead autoscaling for [Astra DB Serverless](https://docs.datastax.com
 
 ## Connect
 
-- 📧 [trimblej@gmail.com](mailto:trimblej@gmail.com)  
-- 🔗 [LinkedIn](https://www.linkedin.com/in/john-trimble-b2a33428)  
-- 💻 [GitHub](https://github.com/johntrimble)
-- ☁️ [Bluesky](https://bsky.app/profile/johntrimble.com)
-- 🏠 [johntrimble.com](https://johntrimble.com)
+- <i class="fa-fw fa-solid fa-envelope"></i> [trimblej@gmail.com](mailto:trimblej@gmail.com)  
+- <i class="fa-fw fa-brands fa-linkedin"></i> [LinkedIn](https://www.linkedin.com/in/john-trimble-b2a33428)  
+- <i class="fa-fw fa-brands fa-github"></i> [GitHub](https://github.com/johntrimble)
+- <i class="fa-fw fa-brands fa-bluesky"></i> [Bluesky](https://bsky.app/profile/johntrimble.com)
+- <i class="fa-fw fa-solid fa-home"></i> [johntrimble.com](https://www.johntrimble.com)
 
 ---
 
