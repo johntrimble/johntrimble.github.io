@@ -1,0 +1,15 @@
+{
+  "name": "latex-to-medium",
+  "version": "1.0.0",
+  "description": "Convert LaTeX-heavy Markdown posts for Medium",
+  "main": "mathjax_convert.js",
+  "dependencies": {
+    "mathjax-node": "^2.1.1",
+    "sharp": "^0.30.7"
+  },
+  "scripts": {
+    "setup": "npm install"
+  },
+  "author": "",
+  "license": "MIT"
+}
