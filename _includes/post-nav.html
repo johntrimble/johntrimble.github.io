@@ -4,13 +4,28 @@
   {% assign previous = site.data.locales[include.lang].post.button.previous %}
   {% assign next = site.data.locales[include.lang].post.button.next %}
 
-  {% if page.previous.url %}
+  {% assign prev_post = page.previous %}
+  {% if prev_post %}
+    {% assign max_iteration = site.posts.size %}
+    {% for i in (1..max_iteration) %}
+      {% if prev_post.hidden_from_nav %}
+        {% assign prev_post = prev_post.previous %}
+        {% if prev_post == nil %}
+          {% break %}
+        {% endif %}
+      {% else %}
+        {% break %}
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+
+  {% if prev_post.url %}
     <a
-      href="{{ site.baseurl }}{{ page.previous.url }}"
+      href="{{ site.baseurl }}{{ prev_post.url }}"
       class="btn btn-outline-primary"
       aria-label="{{ previous }}"
     >
-      <p>{{ page.previous.title }}</p>
+      <p>{{ prev_post.title }}</p>
     </a>
   {% else %}
     <div class="btn btn-outline-primary disabled" aria-label="{{ previous }}">
@@ -18,13 +33,28 @@
     </div>
   {% endif %}
 
-  {% if page.next.url %}
+  {% assign next_post = page.next %}
+  {% if next_post %}
+    {% assign max_iteration = site.posts.size %}
+    {% for i in (1..max_iteration) %}
+      {% if next_post.hidden_from_nav %}
+        {% assign next_post = next_post.next %}
+        {% if next_post == nil %}
+          {% break %}
+        {% endif %}
+      {% else %}
+        {% break %}
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+
+  {% if next_post.url %}
     <a
-      href="{{ site.baseurl }}{{page.next.url}}"
+      href="{{ site.baseurl }}{{ next_post.url }}"
       class="btn btn-outline-primary"
       aria-label="{{ next }}"
     >
-      <p>{{ page.next.title }}</p>
+      <p>{{ next_post.title }}</p>
     </a>
   {% else %}
     <div class="btn btn-outline-primary disabled" aria-label="{{ next }}">
