@@ -43,8 +43,9 @@
       <meta property="twitter:image" content="{{ img_url }}" />
     {%- endcapture -%}
 
+    {% assign old_meta_clip = '<meta name="twitter:card" content="summary" />' %}
     {% assign new_meta_clip = og_image | append: twitter_image %}
-    {% assign seo_tags = seo_tags | append: new_meta_clip %}
+    {% assign seo_tags = seo_tags | replace: old_meta_clip, new_meta_clip %}
   {% endif %}
 
   {{ seo_tags }}
