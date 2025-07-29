@@ -2,9 +2,10 @@
 layout: post
 title: Weight Decay is Not L2 Regularization
 math: true
+comments: false
 author: john
+date: 2025-07-29 02:00 +0000
 ---
-
 When training neural networks, the choice and configuration of optimizers can make or break your results. A particularly subtle pitfall is that PyTorch’s `weight_decay` parameter on many adaptive optimizers—like Adam or RMSprop—actually applies *L2 regularization* rather than true *weight decay*. With vanilla stochastic gradient descent (SGD) the distinction is largely academic, but when you’re using adaptive methods it can lead to noticeably worse generalization if you’re not careful.
 
 We once treated weight decay and L2 regularization as interchangeable terms in machine learning. In fact, this is exactly what I was taught over 10 years ago. Even today Google's AI search results still equate one with the other saying, "weight decay, also known as L2 regularization..." In this post I'll unpack why weight decay and L2 regularization were considered the same historically, why the two diverge under adaptive optimizers, and show you how to get the appropriate weight decay behavior in PyTorch.
