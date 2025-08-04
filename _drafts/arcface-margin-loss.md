@@ -21,9 +21,25 @@ For demonstrative purposes, lets assert the following:
 - Our training data consists of face images for 5 identities: Tom Hanks, Cate Blanchett, Morgan Freeman, Meryl Streep, and Harrison Ford
 - Our embedding network outputs 2D embeddings (for the sake of making plots easier)
 
-The classifier network will be our main focus. 
+image --> embedding network --> embedding --> classifier --> probability distribution
 
+The classifier network will be our main focus. The classifier network involves two components: a linear layer and the softmax function. The linear layer involves taking the dot product of an embedding with a weight matrix W and adding a bias b. Lets suppose we have the following for the weight matrix and bias:
 
+$$
+\begin{align*}
+W = & \begin{bmatrix}
+1.0 & -1.2 \\
+-0.5 & 0.2 \\
+2.2 & -1.5 \\
+-2.2 & 1.5 \\
+2.7 & -0.1
+\end{bmatrix} \\
+\\
+b = & \begin{bmatrix}
+0.1 & 0.3 & 0.5 & 1.0 & 0.8
+\end{bmatrix}
+\end{align*}
+$$
 
 Using an off-the-shelf computer vision model as the base, we can build a network that produces embeddings representing face identities as the output. So it takes an image of a face as an input and outputs an embedding representing the face's identity as an output. Lets call this network the embedding network. The embeddings will be vectors of 2 dimensions (to make visualization easier to draw and understand). I'll denote these output embeddings using $x$.
 
