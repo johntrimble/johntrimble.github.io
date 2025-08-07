@@ -4,7 +4,374 @@ title: ArcFace Margin Loss
 math: true
 ---
 
-Introduction
+## Introduction
+
+Softmax works great when performing classification where the classes are known up-front, but doesn't provide the best performance out-of-the-box when the classes are open ended. Face identification is one such case of an open ended set of classes. There are over 8 billion faces around today with a new ones born every day, it isn't possible to have samples for each in the training data. Here we will look at how softmax works, why it struggles with open ended datasets, and how ArcFace addresses the problem by adding a margin loss to softmax.
+
+Rather than use a face dataset for this discussion, we'll use the first 5 classes of [MNIST](https://en.wikipedia.org/wiki/MNIST_database), a dataset of hand written digits. Granted, there's little reason to use something like ArcFace with MNIST given the number classes are fixed at a mere 10 classes, but it should allow us to see the significance of what ArcFace does. We will be looking at some snippets of code as well as some results from trained models. The full source code is available [here](some_url).
+
+
+## A Simple Model for MNIST
+
+MNIST is a data set of 28x28 grayscale images of handwritten digits along with their labels (0-9). They look like this:
+
+<!-- TODO: Image of MNIST dataset sample -->
+
+At a high-level, a model for performing classification on this sort of data will look like this:
+
+<!-- TODO: Make some kind of image for this -->
+image --> embedding network --> classifier --> probability distrubtion
+
+The embedding network is responsible for encoding the relevant meaning of the input and mapping it into a vector space. The classifier's job is to then map embeddings to classes. In this case, an embedding network might looks something like this:
+
+```python
+class SimpleEmbeddingNetwork(nn.Module):
+    def __init__(self, embedding_dim=2):
+        super(EmbeddingNetwork, self).__init__()
+        self.relu = nn.ReLU()
+        self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(32)
+        self.pool = nn.MaxPool2d(2, 2)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(64)
+        self.fc1 = nn.Linear(64 * 7 * 7, 128, bias=False)
+        self.bn3 = nn.BatchNorm1d(128)
+        self.fc2 = nn.Linear(128, embedding_dim)
+
+    def forward(self, x):
+        # First convolutional block with BatchNorm
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.pool(x)
+
+        # Second convolutional block with BatchNorm
+        x = self.conv2(x)
+        x = self.bn2(x)
+        x = self.relu(x)
+        x = self.pool(x)
+
+        # Flatten the spatial dimensions
+        x = x.view(-1, 64 * 7 * 7)
+
+        # First fully connected layer with BatchNorm
+        x = self.fc1(x)
+        x = self.bn3(x)
+        x = self.relu(x)
+
+        # Output embedding layer
+        embedding = self.fc2(x)
+
+        return embedding
+```
+
+This embedding network takes digit images as inputs, process them with two convlutional layers, and then outputs 2-dimenstional embeddings (we are using 2D embeddings to make plotting easier).
+
+A standard softmax classifier first produces logits using a linear layer and then applies to the softmax function to the logits to rescale them into a probability distribution. Let's look at the linear layer first:
+
+```python
+class LinearClassifier(nn.Module):
+    def __init__(self, embedding_dim=2, num_classes=5, bias=False):
+        super(LinearClassifier, self).__init__()
+        self.fc = nn.Linear(embedding_dim, num_classes, bias=bias)
+
+    def forward(self, x):
+        # Project embeddings to class logits
+        logits = self.fc(x)
+        return logits
+```
+
+Understanding how this particular linear layer works turns out to be critical to understanding how ArcFace is going to help us later. To make life easier, we are going to assume we aren't using a bias (though we will look at what happens if one is included later). The math for this linear layer is pretty striaightfoward:
+
+$$
+z = x \cdot W^T
+$$
+
+Here $x$ will be the embeddings from the embedding network. $W$ is the weight matrix which will have dimensions (5, 2) since we have 5 classes (the digits 0-4) and embedding size of 2. Here is a possible set of values for that weight matrix $W$:
+
+$$
+W^T =
+\begin{bmatrix}
+  0.96 & -0.67 & 0.31 & 0.45 & -0.66 \\
+  0.37 & -0.33 & 1.03 & -0.77 & 0.59 \\
+\end{bmatrix}
+$$
+
+One way to think of this weight matrix is as a collection of vectors, one for each of our 5 classes, we'll label these vectors $w_i$ where $i$ indicates the class. So we'd have the following vectors for our classes, the digits 0 through 4:
+
+$$
+\begin{align*}
+w_0 = & \begin{bmatrix}
+  0.96 \\
+  0.37 \\
+\end{bmatrix}
+
+& w_1 = & \begin{bmatrix}
+  -0.67 \\
+  -0.33 \\
+\end{bmatrix}
+
+& w_2 = & \begin{bmatrix}
+  0.31 \\
+  1.03 \\
+\end{bmatrix} \\
+
+w_3 = & \begin{bmatrix}
+  0.45 \\
+  -0.77 \\
+\end{bmatrix}
+
+& w_4 = & \begin{bmatrix}
+  -0.66 \\
+  0.59 \\
+\end{bmatrix} \\
+\end{align*}
+$$
+
+Here I'll refer to these vectors as the *class centers*. So now can look at $W^T$ as being:
+
+$$
+W^T = \begin{bmatrix}
+w_0 & w_1 & w_2 & w_3 & w_4
+\end{bmatrix}
+$$
+
+We can similarly $x$ as a bunch of embedding row vectors stacked up on top of eachother. One row vector for each element in the batch:
+
+$$
+x = \begin{bmatrix}
+x_0 \\ 
+x_1 \\ 
+x_2 \\ 
+\vdots \\
+\end{bmatrix}
+$$
+
+Now we have:
+
+$$
+z = x \cdot W^T = \begin{bmatrix}
+x_0 \\ 
+x_1 \\ 
+x_2 \\ 
+\vdots \\
+\end{bmatrix}
+\cdot
+\begin{bmatrix}
+w_0 & w_1 & w_2 & w_3 & w_4
+\end{bmatrix}
+$$
+
+A useful way to think of the dot product of two matrices is that you are taking the dot products of the row vectors on the left with the column vectors on the right, which gives us:
+
+$$
+z = \begin{bmatrix}
+x_0 \cdot w_0 & x_0 \cdot w_1 & x_0 \cdot w_2 & x_0 \cdot w_3 & x_0 \cdot w_4 \\
+x_1 \cdot w_0 & x_1 \cdot w_1 & x_1 \cdot w_2 & x_1 \cdot w_3 & x_1 \cdot w_4 \\
+x_2 \cdot w_0 & x_2 \cdot w_1 & x_2 \cdot w_2 & x_2 \cdot w_3 & x_2 \cdot w_4 \\
+\vdots & \vdots & \vdots & \vdots & \vdots
+\end{bmatrix}
+$$
+
+So the output of the linear layer is the dot product of each embedding with each class center. These are called the logits. For each embedding, the largest logit determines the predicted class. Let's look at a specific example. Suppose we have an input like the following:
+
+![digit 0 input image](digit_0.png)
+
+If we feed this image into our embedding network, we get the following embedding:
+
+$$
+x_0 = \begin{bmatrix}
+  18.14 & 2.41 \\
+\end{bmatrix}
+$$
+
+Now that we have the embedding, we can compute the logits, $z$:
+
+$$
+\begin{align*}
+z & = x \cdot W^T \\
+ & = \begin{bmatrix}
+x_0 \\
+\end{bmatrix}
+\cdot
+\begin{bmatrix}
+w_0 & w_1 & w_2 & w_3 & w_4
+\end{bmatrix} \\
+& =\begin{bmatrix}
+x_0 \cdot w_0 & x_0 \cdot w_1 & x_0 \cdot w_2 & x_0 \cdot w_3 & x_0 \cdot w_4 \\
+\end{bmatrix} \\
+& = \begin{bmatrix}
+\begin{bmatrix}
+  18.14 & 2.41 \\
+\end{bmatrix}
+\cdot
+\begin{bmatrix}
+  0.96 \\
+  0.37 \\
+\end{bmatrix}
+& \dots & 
+\begin{bmatrix}
+  18.14 & 2.41 \\
+\end{bmatrix}
+\cdot
+\begin{bmatrix}
+  -0.66 \\
+  0.59 \\
+\end{bmatrix}
+\end{bmatrix} \\
+& = \begin{bmatrix}
+  18.30 & -13.03 & 8.16 & 6.22 & -10.52 \\
+\end{bmatrix}
+\end{align*}
+$$
+
+We can see that the dot product of $x_0$ with the class center $w_0$ is the largest, which makes sense since $x_0$ was the embedding of an image of a 0 and $w_0$ is the class center for the 0-digit class.
+
+The dot product has a relevant geometric interpretation, it is the magnitude of the vectors scaled by the cosine of the angle inbetween them:
+
+$$
+v \cdot u = \|u\|\|v\|cosine(\theta)
+$$
+
+When $\theta$ is 0, the cosine is 1, making the dot product just the product of the vector magnitudes. When $\theta$ is 90 degrees, the cosine is 0 as is the dot product. When $\theta$ is 180 degrees, the cosine is -1 and the dot product is the product of the magnitude of the vectors times -1. If we plot the vector of our embedding with the vectors of the class centers, we get the following:
+
+![Plot digit 0 with class centers](digit_0_sample_plotted.png)
+
+If we look at the vectors for the class centers, they all have similar and relatively low magnitudes and so cluster around the origin. The the class centers $w_1$ and 4 point in the opposite direction of our sample, which lines up with the negative dot products of -13.03 and -10.52 respectively that we calculated earlier. Since the angle in between the sample's vector and that of the class centers for 2, 0, and 3 is less than 90 degrees, the dot products for them are all positive. However, the angle between class 0 and the sample is quite small, so it ends up having the largest dot product of 18.30.
+
+### Softmax
+
+Now that we've looked at embeddings and their relationship to the class centers, now we need to figure out how to turn our logits into a probability distribution. If we look at the logits from our previous example:
+
+$$
+z = \begin{bmatrix}
+  18.30 & -13.03 & 8.16 & 6.22 & -10.52 \\
+\end{bmatrix}
+$$
+
+From the logits, we can tell that 0 should be the most likely class and 1 the least likely. Lets break up this row vector into the logits for each class. We'll say $z_0$ is the logit for class 0, $z_1$ is the logit for class 1, etc. We can then sort them from most to least likely:
+
+$$
+\begin{align*}
+z_0 & = 18.30 & & z_0 = & 18.30 \\
+z_1 & = -13.03 & & z_2 = & 8.16 \\
+z_2 & = 8.16 & \text{sort} \rightarrow  \text{ }& z_3 = & 6.22 \\
+z_3 & = 6.22 & & z_4 = & -10.52 \\
+z_4 & = -10.52 & & z_1 = & -13.03
+\end{align*}
+$$
+
+To get a probability distribution, we might be tempted to just add all the logits together and divide each logit by the sum. However, some of the logits are negative... so that won't work. Here's a trick though, what if we raise 10 by the power of each logit:
+
+<!-- 
+array([1.9907161e+18, 9.2275613e-14, 1.4458742e+08, 1.6655626e+06,
+       3.0521898e-11], dtype=float32)
+-->
+
+$$
+\begin{align*}
+z_0 &=  18.30 \\
+z_2 &=  8.16 \\
+z_3 &=  6.22  \\
+z_4 &=  -10.52 \\
+z_1 &=  -13.03 \\
+\end{align*}
+\quad
+\rightarrow
+\quad
+\begin{align*}
+10^{z_0} &= 10^{18.30} &=& 2.00 \times 10^{18} \\
+10^{z_2} &= 10^{8.16} &=& 1.45 \times 10^8 \\
+10^{z_3} &= 10^{6.22} &=& 1.67 \times 10^6 \\
+10^{z_4} &= 10^{-10.52} &=& 3.05 \times 10^{-11} \\
+10^{z_1} &= 10^{-13.03} &=& 9.23 \times 10^{-14} \\
+\end{align*}
+$$
+
+
+Notice that this transformation didn't change the ordering of the logits. $z_0$ is still the most likely and $z_1$ the least. However, it has transformed our negative numbers into really small, but positive, numbers. Now we can sum the numbers together and divide to get our probabilities:
+
+$$
+\begin{align*}
+\sum{10^{z_i}} &= 2.00 \times 10^{18} + \dots +  9.23 \times 10^{-14} \\
+&\approx 2.00 \times 10^{18}
+\end{align*} 
+$$
+
+$$
+\begin{align*}
+\frac{10^{z_0}}{2.00 \times 10^{18}} \approx 1.00 \\
+\frac{10^{z_2}}{2.00 \times 10^{18}} \approx 0.00 \\
+\frac{10^{z_3}}{2.00 \times 10^{18}} \approx 0.00 \\
+\frac{10^{z_4}}{2.00 \times 10^{18}} \approx 0.00 \\
+\frac{10^{z_1}}{2.00 \times 10^{18}} \approx 0.00 \\
+\end{align*}
+$$
+
+This is exactly what the softmax function does, except instead of using 10, it uses euler's number, $e$:
+
+$$
+\begin{align*}
+\sum{e^{z_i}} &= e^{z_0} + \dots + e^{z_4} \\
+&= e^{18.30} + \dots + e^{-10.52} \\
+&= 8.85 \times 10^7
+\end{align*}
+$$
+
+
+<!--
+
+8.8543880e+07, 2.1827768e-06, 3.4986423e+03, 5.0348843e+02,
+        2.7115957e-05
+
+-->
+
+$$
+\begin{align*}
+\frac{e^{z_0}}{8.85 \times 10^7} \approx 1.00 \\
+\frac{e^{z_2}}{8.85 \times 10^7} \approx 0.00 \\
+\frac{e^{z_3}}{8.85 \times 10^7} \approx 0.00 \\
+\frac{e^{z_4}}{8.85 \times 10^7} \approx 0.00 \\
+\frac{e^{z_1}}{8.85 \times 10^7} \approx 0.00 \\
+\end{align*}
+$$
+
+In this case, the model indicates our sample, with embedding $x_0$, has essentially a 100% chance of being the digit 0. Succinctly, if we have a vector $z$, then the softmax of $z$ is defined componentwise by:
+
+$$
+\sigma(z)_i = \frac{e^{z_i}}{\sum{e^{z_k}}}
+$$
+
+Okay, so now we've covered how to get from embeddings to a probability distribution. Now let's look at why this isn't good enough when we do not know all the classes up-front.
+
+
+## Trouble with Open Ended Classes
+
+So when we have open ended classes, like we do in the case of face identification, we often need to compare two samples to know if they are of the same class. We might compare to picutures of a face to determine if they are of the same face or not. Since the classifier will only know of classes in the training data, we cannot typically rely on it. That means we must compare the embeddings in some way to determine this. If our embedding network maps members of the same class near eachother in the embedding space, then we could compare the distances between the embeddings to see if they are of the same class or not. So when we train a such a network with a softmax classifier, do we get such a capable embedding network.
+
+
+Returning to our example softmax model, here is how it maps our test data into the embedding space:
+
+![Embeddings for Softmas without Classifier Bias](softmax_no_classifier_bias.png)
+
+Here we see the embeddings of our 5 classes which have, loosely, clustered together. The grey lines represent the boundaries between the classes. Ideally, we'd like to see these cluster's spaced far apart from each other and for all members of a cluster to be packed in close together. In particuar, members of a given class should be closer together in the embedding space than to any member of any other class. So is that what has happened here? Consider these 4 samples:
+
+
+
+
+
+
+
+So what we've covered so far works great when the total number of classes is known up-front. However, what do we do when we have a sample for a class that was not in our training data. For face identification task, this would be a face of someone not in the training data, or in our example, it might be a digit not in our training data, like the digit 7. Well the classifier would be of no use, it only has outputs for classes in the training data.
+
+<!--
+
+with all the percision of a shotgun blast into the embedding space
+
+-->
+
+## Measuring Clustering Quality
+
 
 We will start by looking at how we might approach this problem using standard softmax and where that breaks down, and then look at how ArcFace solves the problem. For demonstrative purposes, we will use embeddings of only 2 dimensions (as this makes drawing much easier), and assume a training data set of 5 identities: Tom Hanks, Cate Blanchett, Morgan Freeman, Meryl Streep, and Harrison Ford.
 
