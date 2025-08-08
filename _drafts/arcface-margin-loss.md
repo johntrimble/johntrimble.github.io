@@ -2,6 +2,7 @@
 layout: post
 title: ArcFace Margin Loss
 math: true
+media_subpath: /assets/img/posts/arcface-margin-loss
 ---
 
 ## Introduction
@@ -136,7 +137,7 @@ w_0 & w_1 & w_2 & w_3 & w_4
 \end{bmatrix}
 $$
 
-We can similarly $x$ as a bunch of embedding row vectors stacked up on top of eachother. One row vector for each element in the batch:
+We can similarly look at $x$ as a bunch of embedding row vectors stacked up on top of eachother. One row vector for each element in the batch:
 
 $$
 x = \begin{bmatrix}
@@ -451,7 +452,13 @@ Training the model we get the following embeddings for the test data:
 
 ![Embeddings for Normalized Softmax](normalized_softmax.png)
 
-The Dunn Index for this model is 29.11, a clear improvement over the previous model. But we can do even better.
+If we revisit the samples from earlier where sample of digit 0 was closer to sample of digit 2 than it was to sample of digit 0:
+
+![Sample of class 0 closer to sample of class 2](outlier_class_0_with_class_2.png)
+
+With this new model, we find that sample 174 now has a cosine distance of 2.6149e-4 with sample 204 and a cosine distance of 0.32 with example 887. This means the previous problem, for these samples at least, has been resolved. The model is now able to reliably embedding sample 174 near sample 204 and away from sample 887.
+
+Calculating the Dunn Index for this model, we get 29.11, a clear improvement over the previous model. But we can do even better.
 
 
 # ArcFace Additive Margin Loss
@@ -614,10 +621,126 @@ z_0 & = cos(\theta_{x_0,w_0} + m) \\
 \end{align*}
 $$
 
-Before we get to the code, there is one more pesky little problem. When we add this margin to a logit, the goal is to make the logit smaller so that it is harder to classify the sample correctly. However, there is an edge case where adding the margin actually increases the logit. Suppose by some twist of fate $\theta_{x_0,w_0}$ is actually $\pi$ radians. In this scenario, the $\cos(\theta_{x_0,w_0})$ would be -1, the smallest possible value for the cosine of an angle. If we add a margin of 0.5 radians, then we would have $\cos(\theta_{x_0,w_0} + m) = \cos(\pi + 0.5) \approx -0.88$. This is actually larger than -1, which is not what we want. This problem arises any time that $\cos(\theta_{x_0,w_0}) < \cos(\pi - m)$. To fix this, we need an alternative penalty we can add that won't push the angle past $\pi$.
+Before we get to the code, there is one more pesky little problem. When we add this margin to a logit, the goal is to make the logit smaller so that it is harder to classify the sample correctly. However, there is an edge case where adding the margin actually increases the logit. Suppose by some twist of fate $\theta_{x_0,w_0}$ is actually $\pi$ radians. In this scenario, the $\cos(\theta_{x_0,w_0})$ would be -1, the smallest possible value for the cosine of an angle. If we add a margin of 0.5 radians, then we would have $\cos(\theta_{x_0,w_0} + m) = \cos(\pi + 0.5) \approx -0.88$. This is actually larger than -1, which is not what we want. This problem arises any time that $\cos(\theta_{x_0,w_0}) < \cos(\pi - m)$.
+
+So how do we fix this problem? Well, the paper doesn't seem to address this case. If we think about the scenario when this happens, it is when the embedding is pointing in the opposite direction of the class center. If the embedding and the class center are pointing in opposite directions, then the logit for the correct class should already be quite small. Sure adding the margin might, unintentionally, increase the size of the logit instead of decreasing it, but it's a small favor as the logit will still suck. My solution to the problem is to just pretend it doesn't exist, and it seems to work well enough.
+
+With all of that out of the way, here is the code for ArcFace Additive Margin Loss:
+
+```python
+class ArcFaceLoss(nn.Module):
+    def __init__(self, s=30.0, m=1.0):
+        super().__init__()
+        self.update_hyperparameters(m=m, s=s)
+
+    def update_hyperparameters(self, s=None, m=None):
+        if s is not None:
+            self.s = s
+        if m is not None:
+            self.m = m
+            # Recompute trigonometric values for the new margin
+            self.cos_m = math.cos(m)
+            self.sin_m = math.sin(m)
+
+    def forward(self, cos_theta, labels):
+        # Clamp cosine values to avoid numerical instability
+        cos_theta = torch.clamp(cos_theta, -1.0 + 1e-7, 1.0 - 1e-7)
+
+        # Compute sine values using the Pythagorean identity:
+        #
+        #   sin²(θ) + cos²(θ) = 1
+        #   sin(θ) = √(1 - cos²(θ))
+        #
+        sin_theta = torch.sqrt(1.0 - torch.pow(cos_theta, 2) + 1e-7)
+
+        # Apply the angular margin penalty: cos(θ+m)
+        # Using the trigonometric addition formula:
+        #
+        #   cos(θ+m) = cos(θ)cos(m) - sin(θ)sin(m)
+        #
+        phi = cos_theta * self.cos_m - sin_theta * self.sin_m
+
+        # Create one-hot encoding of labels
+        one_hot = (
+            F.one_hot(labels, num_classes=cos_theta.size(1))
+            .float()
+            .to(cos_theta.device)
+        )
+
+        # Apply margin penalty only to the target class logits
+        logits = cos_theta * (1 - one_hot) + phi * one_hot
+
+        # Apply scaling and compute cross-entropy loss
+        loss = F.cross_entropy(self.s * logits, labels)
+        return loss
+```
+
+After training the model, we get a substantially improved Dunn Index of 442.80, substantially better than the 29.11 we got with the normalized softmax model, and we can see this visually by looking at the embeddings for the test data:
+
+![ArcFace Additive Margin Loss](arcface.png)
+
+
+## Odds and Ends
+
+Typically with both ArcFace and Normalized Softmax, we would use a scaling factor, $s$, to scale the logits (you can see this in the code above). The reason for this is that the logits, being cosine values, are in a very small range between -1 and 1. What this means is that our probability distribution will be very flat, with all classes having similar probabilities. For example, consider the following logits:
+
+$$
+z = \begin{bmatrix}
+  1.0 & -1.0 & -1.0 & -1.0 & -1.0 \\
+\end{bmatrix}
+$$
+
+For class 0, we have the highest possible logit under normalized softmax: 1.0. This is because largest value cosine can take is 1.0. For all the other classes, we have the lowest possible logit under normalized softmax: -1.0. If we apply the softmax function to these logits, we get:
+
+$$
+\begin{align*}
+softmax(z) & = \begin{bmatrix}
+  \frac{e^{1.0}}{\sum{e^{z_i}}} & \frac{e^{-1.0}}{\sum{e^{z_i}}} & \dots & \frac{e^{-1.0}}{\sum{e^{z_i}}}\\
+\end{bmatrix} \\
+& \approx \begin{bmatrix}
+  0.65 & 0.09 & 0.09 & 0.09 & 0.09
+\end{bmatrix}
+\end{align*}
+$$
+
+In the best possible case, the maximum probability we can assign to a class is 65%. What this can look like during training is that the model will exhibit the signs of high bias, and fail to fit the training data well. Multiplying the logits by a scaling factor, $s$, can help with this by increasing the range of values the logits can take. For example, here is what happens if we multiply the logits by a scaling factor of 20:
+
+$$
+\begin{align*}
+z & = 20 \cdot \begin{bmatrix}
+  1.0 & -1.0 & -1.0 & -1.0 & -1.0 \\
+\end{bmatrix} \\
+& = \begin{bmatrix}
+  20.0 & -20.0 & -20.0 & -20.0 & -20.0 \\
+\end{bmatrix}
+\end{align*}
+$$
+
+$$
+\begin{align*}
+softmax(z) & = \begin{bmatrix}
+  \frac{e^{20.0}}{\sum{e^{z_i}}} & \frac{e^{-20.0}}{\sum{e^{z_i}}} & \dots & \frac{e^{-20.0}}{\sum{e^{z_i}}}\\
+\end{bmatrix} \\
+& \approx \begin{bmatrix}
+  1.0 & 0.0 & 0.0 & 0.0 & 0.0
+\end{bmatrix}
+\end{align*}
+$$
+
+Now we can have probabilites effectively ranging from 0% to 100%. This allows us to overcome the high bias problem and fit the training data better. For the toy example we have been using, it really wasn't necessary to use a scaling factor, but in practice it would be. The ArcFace and NormFace papers take different approaches to how the scaling factor is specified. NormFaces adds a new scaling factor parameter which is learned during training, while ArcFace uses a hyperparameter.
+
+Another thing to address is that when we started I explained that we need embeddings with meaningful spatial relationships so that we can reliably handle classes not in the training data. However, so far, I've only shown examples for classes the model has seen during training. There are really two things we need for this to work: the embeddings need to be wel clustered, and the embedding network must be able to generalize to unseen classes. The first part is what we have been focusing on here. Unfortunately, to get an embedding network that can generalize to unseen classes would take a much greater diversity of classes. Five classes representing digits is simply not enough for the embedding network to abstract that qualities that make a symbol distinct from any other symbol. For context, one of the smallest datasets you might use for training a face identification model is the VGGFace2 dataset with approximately 9,000 unique identities.
+
+## Conclusion
+
+Here we used a toy example of classifying 5 digits (digits 0-4) of the MNIST dataset to train and compare three different models: a standard softmax model, a normalized softmax model, and an ArcFace model. We examined how well clustered the embeddings are for each model both visually and by using the Dunn Index. We saw that the standard softmax leaves room for improvement in clustering quality. We then looked at how the normalized softmax improves the clustering quality by normalizing the embeddings and class centers before computing the logits, forcing the model to focus on minimizing the angle between the embeddings and class centers. Finally, we looked at how ArcFace improves the clustering quality even further by adding a margin to the angle for the correct class during training, which pulls samples away from the class boundaries and towards the class centers.
+
+
+
+
 
 <!-- 
-LEAVE THIS COMMENT
+DO NOT REMOVE THIS LINE
 -->
 
 So what we've covered so far works great when the total number of classes is known up-front. However, what do we do when we have a sample for a class that was not in our training data. For face identification task, this would be a face of someone not in the training data, or in our example, it might be a digit not in our training data, like the digit 7. Well the classifier would be of no use, it only has outputs for classes in the training data.
