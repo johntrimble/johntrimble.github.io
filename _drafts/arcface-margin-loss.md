@@ -347,20 +347,278 @@ Okay, so now we've covered how to get from embeddings to a probability distribut
 
 ## Trouble with Open Ended Classes
 
-So when we have open ended classes, like we do in the case of face identification, we often need to compare two samples to know if they are of the same class. We might compare to picutures of a face to determine if they are of the same face or not. Since the classifier will only know of classes in the training data, we cannot typically rely on it. That means we must compare the embeddings in some way to determine this. If our embedding network maps members of the same class near eachother in the embedding space, then we could compare the distances between the embeddings to see if they are of the same class or not. So when we train a such a network with a softmax classifier, do we get such a capable embedding network.
+So when we have open ended classes, like we do in the case of face identification, we often need to compare two samples to know if they are of the same class. We might compare to picutures of a face to determine if they are of the same face or not. Since the classifier will only know of classes in the training data, we cannot typically rely on it. That means we must compare the embeddings in some way to determine this. If our embedding network maps members of the same class near eachother in the embedding space, then we could compare the distances between the embeddings to see if they are of the same class or not. So when we train such a network with a softmax classifier, do we get such a capable embedding network.
 
 
 Returning to our example softmax model, here is how it maps our test data into the embedding space:
 
 ![Embeddings for Softmas without Classifier Bias](softmax_no_classifier_bias.png)
 
-Here we see the embeddings of our 5 classes which have, loosely, clustered together. The grey lines represent the boundaries between the classes. Ideally, we'd like to see these cluster's spaced far apart from each other and for all members of a cluster to be packed in close together. In particuar, members of a given class should be closer together in the embedding space than to any member of any other class. So is that what has happened here? Consider these 4 samples:
+Here we see the embeddings of our 5 classes which have, loosely, clustered together. The grey lines represent the boundaries between the classes. Ideally, we'd like to see these cluster's spaced far apart from each other and for all members of a cluster to be packed in close together. In particuar, members of a given class should be closer together in the embedding space than to any member of any other class. So is that what has happened here? Consider these samples:
+
+![Sample of class 0 closer to sample of class 2](outlier_class_0_with_class_2.png)
+
+The above three samples were classified correctly by the classifier. Samples 174 and 204 are of class 0 and sample 887 is of class 2. However, sample 174 is closer, whether looking at euclidean or cosine distances, to sample 887 than it is to sample 204. This means there isn't a distance threshold we could use that would tell us that 174 is the same class as 204, and that 174 is _not_ the same class as 887. So distances in the embedding space are not always reliable in determining if two samples belong to the same class. How reliable they are depends on how well separated our classes and on how tightly packed the members of a class are. If we want to improve our model, we'll need some way to measure and compare models based on these properties, which brings us to the Dunn Index.
 
 
+## Dunn Index
+
+When looking at the quality of clustering, we care about two things: how well separated are the clusters (inter-class distance), and how cohesive are the classes (intra-class distance). We want to maximize the inter-class distances and minimize the intra-class distances. The Dunn Index, from [A Fuzzy Relative of the ISODATA Process and Its Use in Detecting Compact Well-Separated Clusters (Dunn, J. C., 1973)](https://doi.org/10.1080/01969727308546046), is a metric for comparing these qualities. The metric has roughly the following form:
+
+$$
+DI = \frac{\text{min class distance}}{\text{max distance betweem members of the same class}}
+$$
+
+A higher value for the dunn index means the classes are well separated and cohesive, and a lower value means the classes not well separated or cohesive. If we look at the above definition, there are two ways we can improve the Dunn Index: push the classes further apart which will give us a larger numerator, or pack the members of each class closer together which will give us a smaller denominator.
+
+One of the downsides of the dunn index is that because it compares a minimum with a maximum, it is sensitive to outliers. As such, there are a number of variations of the Dunn Index that try to mitigate this. The one we will use here involves dropping all members of a class that are beyond the 95th percentile of the distances from the centroid of that class. This ensures that a single errant embedding does not torpedo the Dunn Index. This is a simple way to make the Dunn Index more robust to outliers, and it works well in practice. The code for this is available in the source code repository.
+
+If we compute the Dunn Index for our current softmax model, we get a value of 5.31. Now let's look at how we can improve the model.
+
+## Normalized Softmax
+
+You'll recall that we have the following calculation for the logits:
+
+$$
+z = \begin{bmatrix}
+x_0 \cdot w_0 & x_0 \cdot w_1 & x_0 \cdot w_2 & x_0 \cdot w_3 & x_0 \cdot w_4 \\
+\vdots & \vdots & \vdots & \vdots & \vdots
+\end{bmatrix}
+$$
+
+During training, the model tries to maximize the dot product of the embedding with the class center for the correct class, while minimizing the dot products with all other classes. How can the model increase the dot product? Let's take another loot at the definition of the dot product:
+
+$$
+x \cdot w = |x||w| cos \theta
+$$
+
+We can increase the dot product by increasing the magnitudes of either $x$ or $w$, or by decreasing the angle $\theta$ between them. If we look at the embedding space, we can see that increasing the magnitudes of the embeddings is often how things go:
+
+![Embeddings for Softmax with No Classifier Bias](softmax_no_classifier_bias.png)
+
+Increasing the magnitudes in this way makes the euclidean distances between members of the same class larger and more varied, which is not helpful. And since the model has this knob of increasing the magnitudes of the embeddings, it will be less prone to minimizing the angle between the embeddings and the class centers. This means that not only do the euclidean distances suck, but the cosine distances do too.
+
+In [NormFace: L₂ Hypersphere Embedding for Face Verification (Wang et al, 2017)](https://arxiv.org/abs/1704.06369) address the problem by normalizing the embeddings and the class centers before computing the dot product. This means the magnitudes of the embeddings and class centers are always 1, so the dot product is simply the cosine of the angle between them. Now the logits are computed as follows:
+
+$$
+z = \begin{bmatrix}
+\frac{x_0}{\lVert x_0 \rVert} \cdot \frac{w_0}{\lVert w_0 \rVert} & \frac{x_0}{\lVert x_0 \rVert} \cdot \frac{w_1}{\lVert w_1 \rVert} & \dots & \frac{x_0}{\lVert x_0 \rVert} \cdot \frac{w_4}{\lVert w_4 \rVert} \\
+\vdots & \vdots & & \vdots
+\end{bmatrix}
+$$
+
+By depriving the model of the ability to increase magnitudes to improve the dot product, we force it to focus on minimizing the angle between the embeddings and the class centers.
+
+To effect this change, we need to modify our embedding network's `forward(...)` method to normalize the embeddings before passing them to the classifier:
+
+```python
+class EmbeddingNetwork(nn.Module):
+    
+    # ... other methods ...
+
+    def forward(self, x):
+        # ... layers before the embedding layer ...
+
+        # Output embedding layer
+        embedding = self.fc2(x)
+
+        # Normalize the embedding
+        embedding = F.normalize(embedding, p=2, dim=1)
+
+        return embedding
+```
+
+Then we create a new classifier that normalizes the class centers before computing the logits:
+
+```python
+class CosineClassifier(nn.Linear):
+    def __init__(self, embed_dim, num_classes, bias=False):
+        super().__init__(embed_dim, num_classes, bias=bias)
+
+    def reset_parameters(self):
+        super().reset_parameters()
+        # Initialize weights using Xavier uniform initialization
+        nn.init.xavier_uniform_(self.weight)
+        if self.bias is not None:
+            nn.init.constant_(self.bias, 0.0)
+
+    def forward(self, z):
+        # Compute cosine similarity by using normalized weight vectors
+        x = F.linear(z, F.normalize(self.weight, dim=1), self.bias)
+```
+
+Training the model we get the following embeddings for the test data:
+
+![Embeddings for Normalized Softmax](normalized_softmax.png)
+
+The Dunn Index for this model is 29.11, a clear improvement over the previous model. But we can do even better.
 
 
+# ArcFace Additive Margin Loss
 
+Now that we have normalized the embeddings and class centers, rather than writing the dot product for the logits as:
 
+$$
+z = \begin{bmatrix}
+\frac{x_0}{\lVert x_0 \rVert} \cdot \frac{w_0}{\lVert w_0 \rVert} & \frac{x_0}{\lVert x_0 \rVert} \cdot \frac{w_1}{\lVert w_1 \rVert} & \dots & \frac{x_0}{\lVert x_0 \rVert} \cdot \frac{w_4}{\lVert w_4 \rVert} \\
+\vdots & \vdots & & \vdots
+\end{bmatrix}
+$$
+
+We can instead write it as:
+
+$$
+z = \begin{bmatrix}
+cos(\theta_{x_0,w_0}) & cos(\theta_{x_0,w_1}) & \dots & cos(\theta_{x_0,w_4}) \\
+\vdots & \vdots & & \vdots
+\end{bmatrix}
+$$
+
+Where $\theta_{x_0,w_i}$ is the angle between the embedding $x_0$ and the class center $w_i$. We can do this because the dot product is $|u||v| cos(\theta)$, and since we have normalized the embeddings and class centers, the magnitudes are both 1. So the dot product is simply the cosine of the angle between them.
+
+Where ArcFace comes in is by adding a margin to the angle between the embedding and the class center for the correct class during training. This is done by adding a margin $m$, a hyperparameter, to the angle for the correct class. So if we have an embedding sample $x_0$ representing the digit 0, we would compute the logits as follows:
+
+$$
+z = \begin{bmatrix}
+cos(\theta_{x_0,w_0} + m) & cos(\theta_{x_0,w_1}) & \dots & cos(\theta_{x_0,w_4}) \\
+\vdots & \vdots & & \vdots
+\end{bmatrix}
+$$
+
+What does this do? Suppose $\theta_{x_0,w_0}$ is 0.5 radians (approximately 29 degrees), then the logit for the correct class would be `cos(0.5) = 0.88`. Now lets say we add this margin, $m$, with a value of 0.5. Then we'd have `cos(\theta_{x_0,w_0} + m) = cos(0.5 + 0.5) = 0.54`. Critically, we only add this margin to the angle for the correct class, so the logits for the other classes remain unchanged. This effectively reduces the probability of the sample being classified as the correct class, and increases the probability of it being classified as one of the other classes. During training, this forces the model to reduce the angles, $\theta$, even further between the embeddings and the class centers. By reducing the angles, we pull samples away from the class boundaries and towards the class centers, which creates more cohesive clusters and better separates the classes.
+
+To help us understand how to implement this, lets look at a real example. Consider the sample from out traing data that we used earlier:
+
+![digit 0 input image](digit_0.png)
+
+Since this is a different model, we will have a different embedding for the sample, which is:
+
+$$
+x_0 =\begin{bmatrix}
+  0.62 & 0.78 \\
+\end{bmatrix}
+$$
+
+We have the following for our classifier weights, $W^T$:
+
+$$
+W^T = \begin{bmatrix}
+  0.37 & 0.46 \\
+  -0.35 & 0.49 \\
+  -0.05 & -1.19 \\
+  0.34 & -0.12 \\
+  -0.45 & -0.14 \\
+\end{bmatrix}
+$$
+
+Which gives us the following class centers:
+
+$$
+\begin{align*}
+w_0 = & \begin{bmatrix}
+  0.37 \\
+  0.46 \\
+\end{bmatrix}
+& w_1 = & \begin{bmatrix}
+  -0.35 \\
+  0.49 \\
+\end{bmatrix}
+& w_2 = & \begin{bmatrix}
+  -0.05 \\
+  -1.19 \\
+\end{bmatrix} \\
+w_3 = & \begin{bmatrix}
+  0.34 \\
+  -0.12 \\
+\end{bmatrix}
+& w_4 = & \begin{bmatrix}
+  -0.45 \\
+  -0.14 \\
+\end{bmatrix}
+\end{align*}
+$$
+
+Now we can compute the logits:
+
+$$
+\begin{align*}
+z & = \begin{bmatrix}
+x_0 \cdot w_0 & x_0 \cdot w_1 & x_0 \cdot w_2 & x_0 \cdot w_3 & x_0 \cdot w_4 \\
+\end{bmatrix} \\
+& = \begin{bmatrix}
+\begin{bmatrix}
+  0.62 & 0.78 \\
+\end{bmatrix}
+\cdot
+\begin{bmatrix}
+  0.37 \\
+  0.46 \\
+\end{bmatrix}
+&
+\dots
+& 
+\begin{bmatrix}
+  0.62 & 0.78 \\
+\end{bmatrix}
+\cdot
+\begin{bmatrix}
+  -0.45 \\
+  -0.14 \\
+\end{bmatrix}
+\end{bmatrix} \\
+& = \begin{bmatrix}
+  0.59 & 0.16 & -0.96 & 0.11 & -0.39 \\
+\end{bmatrix} \\
+& = \begin{bmatrix}
+cos(\theta_{x_0,w_0})  & \dots & cos(\theta_{x_0,w_4}) \\
+\end{bmatrix}
+\end{align*}
+$$
+
+Now we know our values for the logits, and consequently the angles, $\theta$, between the embedding and the class centers. We get all of this already from the normalized softmax model. Now we just need to add the margin, $m$, to the angle for the correct class. Let's say we choose a margin of 0.5 radians. The correct class is 0, so we need to find the value of $cos(\theta_{x_0,w_0} + m)$. Well, we know `cos(\theta_{x_0,w_0}) = 0.59`... but how do we add the margin. Many years ago, back in trigonometry class, you were learning about trigonometric identities, and were probably wondering when you would ever possibly use them. Well, today is the day! We can use the cosine addition formula to compute this:
+
+$$
+cos(\theta + m) = cos(\theta)cos(m) - sin(\theta)sin(m)
+$$
+
+We know $\cos(\theta_{x_0,w_0}) = 0.59$, and we can compute $\cos(m)$ and $\sin(m)$ since we know the margin, $m$, is 0.5 radians:
+
+$$
+\begin{align*}
+\cos(m) & = \cos(0.5) \approx 0.88 \\
+\sin(m) & = \sin(0.5) \approx 0.48
+\end{align*}
+$$
+
+Now we just need to compute $\sin(\theta_{x_0,w_0})$. We can do this using the Pythagorean identity:
+
+$$
+\sin^2(\theta) + \cos^2(\theta) = 1 \quad\rightarrow\quad
+\sin(\theta) = \sqrt{1 - \cos^2(\theta)}
+$$
+
+So we have:
+
+$$
+\sin(\theta_{x_0,w_0}) = \sqrt{1 - (\cos(\theta_{x_0,w_0}))^2} = \sqrt{1 - 0.59^2} \approx 0.81
+$$
+
+Now we can compute the logit for the correct class:
+
+$$
+\begin{align*}
+z_0 & = cos(\theta_{x_0,w_0} + m) \\
+& = cos(\theta_{x_0,w_0})cos(m) - sin(\theta_{x_0,w_0})sin(m) \\
+& = 0.59 \cdot 0.88 - 0.81 \cdot 0.48 \\
+& \approx 0.52
+\end{align*}
+$$
+
+Before we get to the code, there is one more pesky little problem. When we add this margin to a logit, the goal is to make the logit smaller so that it is harder to classify the sample correctly. However, there is an edge case where adding the margin actually increases the logit. Suppose by some twist of fate $\theta_{x_0,w_0}$ is actually $\pi$ radians. In this scenario, the $\cos(\theta_{x_0,w_0})$ would be -1, the smallest possible value for the cosine of an angle. If we add a margin of 0.5 radians, then we would have $\cos(\theta_{x_0,w_0} + m) = \cos(\pi + 0.5) \approx -0.88$. This is actually larger than -1, which is not what we want. This problem arises any time that $\cos(\theta_{x_0,w_0}) < \cos(\pi - m)$. To fix this, we need an alternative penalty we can add that won't push the angle past $\pi$.
+
+<!-- 
+LEAVE THIS COMMENT
+-->
 
 So what we've covered so far works great when the total number of classes is known up-front. However, what do we do when we have a sample for a class that was not in our training data. For face identification task, this would be a face of someone not in the training data, or in our example, it might be a digit not in our training data, like the digit 7. Well the classifier would be of no use, it only has outputs for classes in the training data.
 
