@@ -16,6 +16,7 @@ Rather than use a face dataset for this discussion, we'll use the first 5 classe
 
 MNIST is a data set of 28x28 grayscale images of handwritten digits along with their labels (0-9). They look like this:
 
+![Sample MNIST Digit](examples_mnist.png)
 <!-- TODO: Image of MNIST dataset sample -->
 
 At a high-level, a model for performing classification on this sort of data will look like this:
@@ -82,7 +83,7 @@ class LinearClassifier(nn.Module):
         return logits
 ```
 
-Understanding how this particular linear layer works turns out to be critical to understanding how ArcFace is going to help us later. To make life easier, we are going to assume we aren't using a bias (though we will look at what happens if one is included later). The math for this linear layer is pretty striaightfoward:
+Understanding how this particular linear layer works turns out to be critical to understanding how ArcFace is going to help us later. To make life easier, we are going to assume we aren't using a bias. The math for this linear layer is pretty striaightfoward:
 
 $$
 z = x \cdot W^T
@@ -226,7 +227,7 @@ x_0 \cdot w_0 & x_0 \cdot w_1 & x_0 \cdot w_2 & x_0 \cdot w_3 & x_0 \cdot w_4 \\
 \end{align*}
 $$
 
-We can see that the dot product of $x_0$ with the class center $w_0$ is the largest, which makes sense since $x_0$ was the embedding of an image of a 0 and $w_0$ is the class center for the 0-digit class.
+We can see that the dot product of $x_0$ with the class center $w_0$ is the largest, which makes sense since $x_0$ was the embedding of an image of a "0" and $w_0$ is the class center for the 0-digit class.
 
 The dot product has a relevant geometric interpretation, it is the magnitude of the vectors scaled by the cosine of the angle inbetween them:
 
@@ -264,31 +265,25 @@ $$
 
 To get a probability distribution, we might be tempted to just add all the logits together and divide each logit by the sum. However, some of the logits are negative... so that won't work. Here's a trick though, what if we raise 10 by the power of each logit:
 
-<!-- 
-array([1.9907161e+18, 9.2275613e-14, 1.4458742e+08, 1.6655626e+06,
-       3.0521898e-11], dtype=float32)
--->
-
 $$
-\begin{align*}
+\begin{aligned}
 z_0 &=  18.30 \\
 z_2 &=  8.16 \\
 z_3 &=  6.22  \\
 z_4 &=  -10.52 \\
 z_1 &=  -13.03 \\
-\end{align*}
+\end{aligned}
 \quad
 \rightarrow
 \quad
-\begin{align*}
+\begin{aligned}
 10^{z_0} &= 10^{18.30} &=& 2.00 \times 10^{18} \\
 10^{z_2} &= 10^{8.16} &=& 1.45 \times 10^8 \\
 10^{z_3} &= 10^{6.22} &=& 1.67 \times 10^6 \\
 10^{z_4} &= 10^{-10.52} &=& 3.05 \times 10^{-11} \\
 10^{z_1} &= 10^{-13.03} &=& 9.23 \times 10^{-14} \\
-\end{align*}
+\end{aligned}
 $$
-
 
 Notice that this transformation didn't change the ordering of the logits. $z_0$ is still the most likely and $z_1$ the least. However, it has transformed our negative numbers into really small, but positive, numbers. Now we can sum the numbers together and divide to get our probabilities:
 
@@ -309,7 +304,7 @@ $$
 \end{align*}
 $$
 
-This is exactly what the softmax function does, except instead of using 10, it uses euler's number, $e$:
+This is exactly what the softmax function does, except instead of using 10, it uses Euler's number, $e$:
 
 $$
 \begin{align*}
@@ -318,14 +313,6 @@ $$
 &= 8.85 \times 10^7
 \end{align*}
 $$
-
-
-<!--
-
-8.8543880e+07, 2.1827768e-06, 3.4986423e+03, 5.0348843e+02,
-        2.7115957e-05
-
--->
 
 $$
 \begin{align*}
@@ -348,18 +335,17 @@ Okay, so now we've covered how to get from embeddings to a probability distribut
 
 ## Trouble with Open Ended Classes
 
-So when we have open ended classes, like we do in the case of face identification, we often need to compare two samples to know if they are of the same class. We might compare to picutures of a face to determine if they are of the same face or not. Since the classifier will only know of classes in the training data, we cannot typically rely on it. That means we must compare the embeddings in some way to determine this. If our embedding network maps members of the same class near eachother in the embedding space, then we could compare the distances between the embeddings to see if they are of the same class or not. So when we train such a network with a softmax classifier, do we get such a capable embedding network.
-
+So when we have open ended classes, like we do in the case of face identification, we often need to compare two samples to know if they are of the same class. We might compare to pictures of a face to determine if they are of the same face or not. Since the classifier will only know of classes in the training data, we cannot typically rely on it. That means we must compare the embeddings in some way to determine this. If our embedding network maps members of the same class near each other in the embedding space, then we could compare the distances between the embeddings to see if they are of the same class or not. So when we train such a network with a softmax classifier, do we get such a capable embedding network?
 
 Returning to our example softmax model, here is how it maps our test data into the embedding space:
 
-![Embeddings for Softmas without Classifier Bias](softmax_no_classifier_bias.png)
+![Embeddings for Softmax without Classifier Bias](softmax_no_classifier_bias.png)
 
 Here we see the embeddings of our 5 classes which have, loosely, clustered together. The grey lines represent the boundaries between the classes. Ideally, we'd like to see these cluster's spaced far apart from each other and for all members of a cluster to be packed in close together. In particuar, members of a given class should be closer together in the embedding space than to any member of any other class. So is that what has happened here? Consider these samples:
 
 ![Sample of class 0 closer to sample of class 2](outlier_class_0_with_class_2.png)
 
-The above three samples were classified correctly by the classifier. Samples 174 and 204 are of class 0 and sample 887 is of class 2. However, sample 174 is closer, whether looking at euclidean or cosine distances, to sample 887 than it is to sample 204. This means there isn't a distance threshold we could use that would tell us that 174 is the same class as 204, and that 174 is _not_ the same class as 887. So distances in the embedding space are not always reliable in determining if two samples belong to the same class. How reliable they are depends on how well separated our classes and on how tightly packed the members of a class are. If we want to improve our model, we'll need some way to measure and compare models based on these properties, which brings us to the Dunn Index.
+The above three samples were classified correctly by the classifier. Samples 174 and 204 are of class 0 and sample 887 is of class 2. However, sample 174 is closer to sample 887 than it is to sample 204, whether looking at euclidean or cosine distances. This means there isn't a distance threshold we could use that would tell us that 174 is the same class as 204, and that 174 is _not_ the same class as 887. So distances in the embedding space are not always reliable in determining if two samples belong to the same class. How reliable they are depends on how well separated our classes are and on how tightly packed the members of a class are. If we want to improve our model, we'll need some way to measure and compare models based on these properties, which brings us to the Dunn Index.
 
 
 ## Dunn Index
@@ -370,7 +356,7 @@ $$
 DI = \frac{\text{min class distance}}{\text{max distance betweem members of the same class}}
 $$
 
-A higher value for the dunn index means the classes are well separated and cohesive, and a lower value means the classes not well separated or cohesive. If we look at the above definition, there are two ways we can improve the Dunn Index: push the classes further apart which will give us a larger numerator, or pack the members of each class closer together which will give us a smaller denominator.
+A higher value for the dunn index means the classes are well separated and cohesive, and a lower value means the classes are not well separated or cohesive. If we look at the above definition, there are two ways we can improve the Dunn Index: push the classes further apart which will give us a larger numerator, or pack the members of each class closer together which will give us a smaller denominator.
 
 One of the downsides of the dunn index is that because it compares a minimum with a maximum, it is sensitive to outliers. As such, there are a number of variations of the Dunn Index that try to mitigate this. The one we will use here involves dropping all members of a class that are beyond the 95th percentile of the distances from the centroid of that class. This ensures that a single errant embedding does not torpedo the Dunn Index. This is a simple way to make the Dunn Index more robust to outliers, and it works well in practice. The code for this is available in the source code repository.
 
@@ -390,16 +376,16 @@ $$
 During training, the model tries to maximize the dot product of the embedding with the class center for the correct class, while minimizing the dot products with all other classes. How can the model increase the dot product? Let's take another loot at the definition of the dot product:
 
 $$
-x \cdot w = |x||w| cos \theta
+u \cdot v = |u||v| cos \theta
 $$
 
-We can increase the dot product by increasing the magnitudes of either $x$ or $w$, or by decreasing the angle $\theta$ between them. If we look at the embedding space, we can see that increasing the magnitudes of the embeddings is often how things go:
+We can increase the dot product by increasing the magnitudes of either $u$ or $v$, or by decreasing the angle $\theta$ between them. If we look at the embedding space, we can see that increasing the magnitudes of the embeddings is often how things go:
 
 ![Embeddings for Softmax with No Classifier Bias](softmax_no_classifier_bias.png)
 
-Increasing the magnitudes in this way makes the euclidean distances between members of the same class larger and more varied, which is not helpful. And since the model has this knob of increasing the magnitudes of the embeddings, it will be less prone to minimizing the angle between the embeddings and the class centers. This means that not only do the euclidean distances suck, but the cosine distances do too.
+Notice how the embedding for each class stretch out from the origin. Increasing the magnitudes in this way makes the euclidean distances between members of the same class larger and more varied, which is not helpful. And since the model has this knob of increasing the magnitudes of the embeddings, it will be less prone to minimizing the angle between the embeddings and the class centers. This means that not only do we get subpar euclidean distances, but the also mediocre cosine distances too.
 
-In [NormFace: L₂ Hypersphere Embedding for Face Verification (Wang et al, 2017)](https://arxiv.org/abs/1704.06369) address the problem by normalizing the embeddings and the class centers before computing the dot product. This means the magnitudes of the embeddings and class centers are always 1, so the dot product is simply the cosine of the angle between them. Now the logits are computed as follows:
+In [NormFace: L₂ Hypersphere Embedding for Face Verification (Wang et al, 2017)](https://arxiv.org/abs/1704.06369) they address the problem by normalizing the embeddings and the class centers before computing the dot product. This means the magnitudes of the embeddings and class centers are always 1, so the dot product is simply the cosine of the angle between them. Now the logits are computed as follows:
 
 $$
 z = \begin{bmatrix}
@@ -448,11 +434,11 @@ class CosineClassifier(nn.Linear):
         x = F.linear(z, F.normalize(self.weight, dim=1), self.bias)
 ```
 
-Training the model we get the following embeddings for the test data:
+After training the model, we get the following embeddings for the test data:
 
 ![Embeddings for Normalized Softmax](normalized_softmax.png)
 
-If we revisit the samples from earlier where sample of digit 0 was closer to sample of digit 2 than it was to sample of digit 0:
+If we revisit the samples from earlier where sample of digit 0 was closer to sample of digit 2 than it was to one of the other samples of digit 0:
 
 ![Sample of class 0 closer to sample of class 2](outlier_class_0_with_class_2.png)
 
@@ -582,7 +568,7 @@ cos(\theta_{x_0,w_0})  & \dots & cos(\theta_{x_0,w_4}) \\
 \end{align*}
 $$
 
-Now we know our values for the logits, and consequently the angles, $\theta$, between the embedding and the class centers. We get all of this already from the normalized softmax model. Now we just need to add the margin, $m$, to the angle for the correct class. Let's say we choose a margin of 0.5 radians. The correct class is 0, so we need to find the value of $cos(\theta_{x_0,w_0} + m)$. Well, we know `cos(\theta_{x_0,w_0}) = 0.59`... but how do we add the margin. Many years ago, back in trigonometry class, you were learning about trigonometric identities, and were probably wondering when you would ever possibly use them. Well, today is the day! We can use the cosine addition formula to compute this:
+Now we know our values for the logits, and consequently the angles, $\theta$, between the embedding and the class centers. We get all of this already from the normalized softmax model. Now we just need to add the margin, $m$, to the angle for the correct class. Let's say we choose a margin of 0.5 radians. The correct class is 0, so we need to find the value of $cos(\theta_{x_0,w_0} + m)$. Well, we know $\cos(\theta_{x_0,w_0}) = 0.59$... but how do we add the margin? Many years ago, back in trigonometry class, you were learning about trigonometric identities and were probably wondering when you would ever possibly use them. Well, today is the day! We can use the cosine addition formula to compute this:
 
 $$
 cos(\theta + m) = cos(\theta)cos(m) - sin(\theta)sin(m)
@@ -623,7 +609,7 @@ $$
 
 Before we get to the code, there is one more pesky little problem. When we add this margin to a logit, the goal is to make the logit smaller so that it is harder to classify the sample correctly. However, there is an edge case where adding the margin actually increases the logit. Suppose by some twist of fate $\theta_{x_0,w_0}$ is actually $\pi$ radians. In this scenario, the $\cos(\theta_{x_0,w_0})$ would be -1, the smallest possible value for the cosine of an angle. If we add a margin of 0.5 radians, then we would have $\cos(\theta_{x_0,w_0} + m) = \cos(\pi + 0.5) \approx -0.88$. This is actually larger than -1, which is not what we want. This problem arises any time that $\cos(\theta_{x_0,w_0}) < \cos(\pi - m)$.
 
-So how do we fix this problem? Well, the paper doesn't seem to address this case. If we think about the scenario when this happens, it is when the embedding is pointing in the opposite direction of the class center. If the embedding and the class center are pointing in opposite directions, then the logit for the correct class should already be quite small. Sure adding the margin might, unintentionally, increase the size of the logit instead of decreasing it, but it's a small favor as the logit will still suck. My solution to the problem is to just pretend it doesn't exist, and it seems to work well enough.
+So how do we fix this problem? Well, the paper doesn't seem to address this case. If we think about the scenario when this happens, it is when the embedding is pointing in the opposite direction of the class center. If the embedding and the class center are pointing in opposite directions, then the logit for the correct class would already be quite small. Sure adding the margin might, unintentionally, increase the size of the logit instead of decreasing it, but it's a small favor as the logit will still suck anyway. My solution to the problem is to just pretend it doesn't exist, and it seems to work well enough.
 
 With all of that out of the way, here is the code for ArcFace Additive Margin Loss:
 
@@ -675,7 +661,7 @@ class ArcFaceLoss(nn.Module):
         return loss
 ```
 
-After training the model, we get a substantially improved Dunn Index of 442.80, substantially better than the 29.11 we got with the normalized softmax model, and we can see this visually by looking at the embeddings for the test data:
+After training the model, we get a Dunn Index of 442.80, substantially better than the 29.11 we got with the normalized softmax model, and we can see this visually by looking at the embeddings for the test data:
 
 ![ArcFace Additive Margin Loss](arcface.png)
 
@@ -727,150 +713,10 @@ softmax(z) & = \begin{bmatrix}
 \end{align*}
 $$
 
-Now we can have probabilites effectively ranging from 0% to 100%. This allows us to overcome the high bias problem and fit the training data better. For the toy example we have been using, it really wasn't necessary to use a scaling factor, but in practice it would be. The ArcFace and NormFace papers take different approaches to how the scaling factor is specified. NormFaces adds a new scaling factor parameter which is learned during training, while ArcFace uses a hyperparameter.
+Now we can have probabilites effectively ranging from 0% to 100%. This allows the model to overcome the high bias problem and better fit the training data. For the toy example we have been using, it really wasn't necessary to use a scaling factor, but in practice it would be. The ArcFace and NormFace papers take different approaches to how the scaling factor is specified. NormFaces adds a new scaling factor parameter which is learned during training, while ArcFace uses a hyperparameter.
 
-Another thing to address is that when we started I explained that we need embeddings with meaningful spatial relationships so that we can reliably handle classes not in the training data. However, so far, I've only shown examples for classes the model has seen during training. There are really two things we need for this to work: the embeddings need to be wel clustered, and the embedding network must be able to generalize to unseen classes. The first part is what we have been focusing on here. Unfortunately, to get an embedding network that can generalize to unseen classes would take a much greater diversity of classes. Five classes representing digits is simply not enough for the embedding network to abstract that qualities that make a symbol distinct from any other symbol. For context, one of the smallest datasets you might use for training a face identification model is the VGGFace2 dataset with approximately 9,000 unique identities.
+Another thing to address is that when we started I explained that we need embeddings with meaningful spatial relationships so that we can reliably handle classes not in the training data. However, so far, I've only shown examples for classes the model has seen during training. There are really two things we need for this to work: the embeddings need to be well clustered, and the embedding network must be able to generalize to unseen classes. The first part is what we have been focusing on here. Unfortunately, to get an embedding network that can generalize to unseen classes would take a much greater diversity of classes. Five classes representing digits is simply not enough for the embedding network to abstract that qualities that make a symbol distinct from any other symbol. For context, one of the smallest datasets you might use for training a face identification model is the VGGFace2 dataset with approximately 9,000 unique identities.
 
 ## Conclusion
 
 Here we used a toy example of classifying 5 digits (digits 0-4) of the MNIST dataset to train and compare three different models: a standard softmax model, a normalized softmax model, and an ArcFace model. We examined how well clustered the embeddings are for each model both visually and by using the Dunn Index. We saw that the standard softmax leaves room for improvement in clustering quality. We then looked at how the normalized softmax improves the clustering quality by normalizing the embeddings and class centers before computing the logits, forcing the model to focus on minimizing the angle between the embeddings and class centers. Finally, we looked at how ArcFace improves the clustering quality even further by adding a margin to the angle for the correct class during training, which pulls samples away from the class boundaries and towards the class centers.
-
-
-
-
-
-<!-- 
-DO NOT REMOVE THIS LINE
--->
-
-So what we've covered so far works great when the total number of classes is known up-front. However, what do we do when we have a sample for a class that was not in our training data. For face identification task, this would be a face of someone not in the training data, or in our example, it might be a digit not in our training data, like the digit 7. Well the classifier would be of no use, it only has outputs for classes in the training data.
-
-<!--
-
-with all the percision of a shotgun blast into the embedding space
-
--->
-
-## Measuring Clustering Quality
-
-
-We will start by looking at how we might approach this problem using standard softmax and where that breaks down, and then look at how ArcFace solves the problem. For demonstrative purposes, we will use embeddings of only 2 dimensions (as this makes drawing much easier), and assume a training data set of 5 identities: Tom Hanks, Cate Blanchett, Morgan Freeman, Meryl Streep, and Harrison Ford.
-
-
-## Explain embeddings and dot product
-
-When building a face recognition model using SoftMax, we can break down the network into three components:
-
-1. **Training Data**: This is a collection of face images along with their respective identities as one-hot vectors.
-2. **Embedding Network**: This network takes an image of a face and maps it to an embedding, a real valued vector representing the face's identity. This embedding should have a meaningful spatial relationship with other embeddings of images of faces with the same identity. This network might leverage an existing off-the-shelf model architecture such as ResNet, ViT, etc.
-3. **Classifier Network**: The classifier network maps embeddings to probability distributions over the available classes. It effectively tells us the likely class of a given embedding, and consequently the face image from which the embedding was derived.
-
-For demonstrative purposes, lets assert the following:
-- Our training data consists of face images for 5 identities: Tom Hanks, Cate Blanchett, Morgan Freeman, Meryl Streep, and Harrison Ford
-- Our embedding network outputs 2D embeddings (for the sake of making plots easier)
-
-image --> embedding network --> embedding --> classifier --> probability distribution
-
-The classifier network will be our main focus. The classifier network involves two components: a linear layer and the softmax function. The linear layer involves taking the dot product of an embedding with a weight matrix W and adding a bias b. Lets suppose we have the following for the weight matrix and bias:
-
-$$
-\begin{align*}
-W = & \begin{bmatrix}
-1.0 & -1.2 \\
--0.5 & 0.2 \\
-2.2 & -1.5 \\
--2.2 & 1.5 \\
-2.7 & -0.1
-\end{bmatrix} \\
-\\
-b = & \begin{bmatrix}
-0.1 & 0.3 & 0.5 & 1.0 & 0.8
-\end{bmatrix}
-\end{align*}
-$$
-
-Using an off-the-shelf computer vision model as the base, we can build a network that produces embeddings representing face identities as the output. So it takes an image of a face as an input and outputs an embedding representing the face's identity as an output. Lets call this network the embedding network. The embeddings will be vectors of 2 dimensions (to make visualization easier to draw and understand). I'll denote these output embeddings using $x$.
-
-Unfortunately, we don't have embeddings in our training data, just pictures of people for each class (the classes in this case being the actors mentioned above). To bridge this gap, we'll need a classifier network. The classifier network takes embeddings as input and outputs a probability distribution over the classes in the training data, indicating how likely a given embedding is to belong to each class. So so far we have this:
-
-image --> embedding-network --> embedding --> classifier --> probability distribution
-
-The classifier contains two pieces, the classifier weights $W$, and the SoftMax function. $W$ is a matrix that really just a collection of vectors representing each class. Each of these vectors will be represented with $w$ and a subscript indicating the class. In this case, we'll have $w_tom$, $w_cate$, $w_morgan$, $w_meryl$, and $w_harrison$. The matrix might look something like this:
-
-TODO: a Matrix W with some weights and an indicator as to the class vectors.
-
-Our embedding $x$ is multiplied by the matrix $W$ to produce logits, $z$. To explain what the logits are, lets dig deeper into what happens when we multiply $x$ and $W$:
-
-$$
-z = x \dot W
-$$
-
-When we take the dot product between two matrices (or a row vector and a matrix in this case), what we are really doing is taking the dot product between each row vector on the left with each column vector on the right. This yields a new matrix, or in this case row vector since we only have one embedding here, like this:
-
-$$
-z = x \dot W = [ x \dot w_tom, x \dot w_cate, x \dot w_morgan, x \dot w_meryl, x \dot w_harrison]
-$$
-
-The dot product of two vectors is the product of the magnitudes of each vector scaled by the cosine of the angle in between them:
-
-$$
-x \dot w = |x||v| cos \theta
-$$
-
-So if two vectors point in the same direction (have $\theta close to 0), and each have a large magnitude, then their dot product will also be large. If two vectors have a $\theta$ of 90 degrees, then the dot product will be 0 irrespective of the magnitudes of the vectors (since the cosine of 90 degrees is 0). Ideally, we want the dot product for x to be largest with the vector $w$ representing the correct class and small for all other classes. We will also use a set of biases, $b$, as is common with classifiers, for each class which is simply added on to our dot product. After training, these biases will often reflect the frequency of each class in the training data. So if the training data contains more pictures of Harrison Ford than anyone else, the $b_harrison$ will be the largest bias. This gives us an equation for the logits as follows:
-
-$$
-z = x \dot W + b = [ x \dot w_tom + b_tom, x \dot w_cate + b_cate, x \dot w_morgan + b_morgan, x \dot w_meryl + b_meryl, x \dot w_harrison + b_harrison]
-$$
-
-With the logits alone, we can rank the categories for an embedding $x$ from most likely to least likely, but we still need to cajole these logits into a probability distribution. Lets consider the following case:
-
-TODO: example where some of the logits end up being negative
-
-One thing you might think to try to turn the above logits into a probability distribtuion is to simply add all the logits together and then divide each logit by the sum. Unfortunately, some of the numbers are negative, so this won't work. One neat transformation we could do is 10 to the power of each logit, like so:
-
-$$
-z = [1, -1, 0.5, -0.25, 3]
-
-10^z = [10^1, 10^-1, 10^0.5, 10^-0.25, 10^3] = ...
-$$
-
-Notice how this operation does change the relative ordering of the logits, however it does make the logits all positive numbers. Now we can sum them together and divide each logit by the sum to get our probability distribution. This is exactly what the softmax function does:
-
-$$
-softmax(v) = u where u_i = \frac{e^{v_i}}{sum e^{v_j}}
-$$
-
-This does effectively the same thing, except using euler's number, instead of 10:
-
-$$
-z = [1, -1, 0.5, -0.25, 3]
-
-e^z = [e^1, e^-1, e^0.5, e^-0.25, e^3] = ...
-
-sum e^z = ....
-
-softmax(z) = e^z / (sum e^z) = [....]
-$$
-
-We now have our probability distribution. This gets us from an image of a face, to an embedding the encodes the face's identity, to a probability distribution among our 5 possible classes. Let's run through of how this all works using a picture of Harrison Ford:
-
-harrison ford --> embedding network --> embeddings --> classifier weights --> logits --> probability distribution
-
-
-
-
-
-## Explain how SoftMax scales logits into a probability distribution
-
-## Weight vectors establish class boundaries
-
-## Inter-class and Intra-class distances with normal SoftMax
-
-## Remove bias when calculating logits
-
-## Normalize the embeddings and weight matrix
-
-## More ways to think about dot products (product of magnitudes scaled by cosine of the angle)
-
-## Adding a margin to the correct category for each sample
