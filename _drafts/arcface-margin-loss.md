@@ -7,29 +7,30 @@ media_subpath: /assets/img/posts/arcface-margin-loss
 
 ## Introduction
 
-Softmax works great when performing classification where the classes are known up-front, but doesn't provide the best performance out-of-the-box when the classes are open ended. Face identification is one such case of an open ended set of classes. There are over 8 billion faces around today with a new ones born every day, it isn't possible to have samples for each in the training data. Here we will look at how softmax works, why it struggles with open ended datasets, and how ArcFace addresses the problem by adding a margin loss to softmax.
+Imagine trying to build a face identification system that can recognize any face on Earth—not just some fixed set of faces. New faces appear every day, and there's no way to include all of them during training. Traditional classification methods start to fall apart in this kind of *open-ended* problem.
 
-Rather than use a face dataset for this discussion, we'll use the first 5 classes of [MNIST](https://en.wikipedia.org/wiki/MNIST_database), a dataset of hand written digits. Granted, there's little reason to use something like ArcFace with MNIST given the number classes are fixed at a mere 10 classes, but it should allow us to see the significance of what ArcFace does. We will be looking at some snippets of code as well as some results from trained models. The full source code is available [here](some_url).
+One of the most common such methods is *softmax*. It works brilliantly when the set of classes is fixed, but struggles when new, unseen classes appear. In this post, we'll explore how softmax works, why it falters in open-ended scenarios, and how *ArcFace* addresses the problem with an *additive angular margin* that forces better separation between classes.
+
+To keep things easy to visualize, we'll use the first five classes of [MNIST](https://en.wikipedia.org/wiki/MNIST_database), a dataset of handwritten digits. MNIST doesn't require ArcFace—the classes are fixed at 10—but it's a convenient playground for illustrating the concepts. We'll walk through code snippets, mathematical details, and visualizations from trained models. The full source code will be available [here](some_url).
 
 
-## A Simple Model for MNIST
+## A Softmax Model for MNIST
 
-MNIST is a data set of 28x28 grayscale images of handwritten digits along with their labels (0-9). They look like this:
+MNIST consists of 28×28 grayscale images of handwritten digits (0–9) with labels. For demonstration purposes, we will use the first 5 digits. They look like this:
 
 ![Sample MNIST Digit](examples_mnist.png)
-<!-- TODO: Image of MNIST dataset sample -->
 
-At a high-level, a model for performing classification on this sort of data will look like this:
+At a high level, our pipeline is:
 
 <!-- TODO: Make some kind of image for this -->
-image --> embedding network --> classifier --> probability distrubtion
+image → embedding network → classifier → probability distribution
 
-The embedding network is responsible for encoding the relevant meaning of the input and mapping it into a vector space. The classifier's job is to then map embeddings to classes. In this case, an embedding network might looks something like this:
+The *embedding network* encodes relevant structure in an image into a vector. The *classifier* maps embeddings to class scores. Here’s a simple embedding network that outputs 2‑dimensional embeddings (handy for plotting):
 
 ```python
 class SimpleEmbeddingNetwork(nn.Module):
     def __init__(self, embedding_dim=2):
-        super(EmbeddingNetwork, self).__init__()
+        super().__init__()
         self.relu = nn.ReLU()
         self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(32)
@@ -67,14 +68,12 @@ class SimpleEmbeddingNetwork(nn.Module):
         return embedding
 ```
 
-This embedding network takes digit images as inputs, process them with two convlutional layers, and then outputs 2-dimenstional embeddings (we are using 2D embeddings to make plotting easier).
-
-A standard softmax classifier first produces logits using a linear layer and then applies to the softmax function to the logits to rescale them into a probability distribution. Let's look at the linear layer first:
+A standard softmax classifier first produces logits with a linear layer and then applies softmax to convert them into a probability distribution:
 
 ```python
 class LinearClassifier(nn.Module):
     def __init__(self, embedding_dim=2, num_classes=5, bias=False):
-        super(LinearClassifier, self).__init__()
+        super().__init__()
         self.fc = nn.Linear(embedding_dim, num_classes, bias=bias)
 
     def forward(self, x):
@@ -83,99 +82,139 @@ class LinearClassifier(nn.Module):
         return logits
 ```
 
-Understanding how this particular linear layer works turns out to be critical to understanding how ArcFace is going to help us later. To make life easier, we are going to assume we aren't using a bias. The math for this linear layer is pretty striaightfoward:
+Understanding this linear layer is key to understanding ArcFace. Assuming no bias, the logits are:
 
 $$
-z = x \cdot W^T
+\mathbf{z} = \mathbf{x} \cdot \mathbf{W}^\top \, ,
 $$
 
-Here $x$ will be the embeddings from the embedding network. $W$ is the weight matrix which will have dimensions (5, 2) since we have 5 classes (the digits 0-4) and embedding size of 2. Here is a possible set of values for that weight matrix $W$:
+where:
+* $\mathbf{x}$ is the batch of embeddings (shape: `batch_size` × `embedding_dim`)
+* $\mathbf{W}$ is the weight matrix (shape: `num_classes` × `embedding_dim`)
+
+With 5 classes (digits 0–4) and an embedding size of 2, $\mathbf{W}$ has shape (5, 2). After training this simple embedding network and classifier, I ended up with:
 
 $$
-W^T =
+\mathbf{W}^\top =
 \begin{bmatrix}
   0.96 & -0.67 & 0.31 & 0.45 & -0.66 \\
   0.37 & -0.33 & 1.03 & -0.77 & 0.59 \\
 \end{bmatrix}
 $$
 
-One way to think of this weight matrix is as a collection of vectors, one for each of our 5 classes, we'll label these vectors $w_i$ where $i$ indicates the class. So we'd have the following vectors for our classes, the digits 0 through 4:
+Each column of $\mathbf{W}^\top$ (or each row of $\mathbf{W}$) is a vector $\mathbf{W}_i$ representing the *class center* of class $i$:
 
 $$
 \begin{align*}
-w_0 = & \begin{bmatrix}
+\mathbf{w}_0 = & \begin{bmatrix}
   0.96 \\
   0.37 \\
 \end{bmatrix}
 
-& w_1 = & \begin{bmatrix}
+& \mathbf{w}_1 = & \begin{bmatrix}
   -0.67 \\
   -0.33 \\
 \end{bmatrix}
 
-& w_2 = & \begin{bmatrix}
+& \mathbf{w}_2 = & \begin{bmatrix}
   0.31 \\
   1.03 \\
 \end{bmatrix} \\
 
-w_3 = & \begin{bmatrix}
+\mathbf{w}_3 = & \begin{bmatrix}
   0.45 \\
   -0.77 \\
 \end{bmatrix}
 
-& w_4 = & \begin{bmatrix}
+& \mathbf{w}_4 = & \begin{bmatrix}
   -0.66 \\
   0.59 \\
 \end{bmatrix} \\
 \end{align*}
 $$
 
-Here I'll refer to these vectors as the *class centers*. So now can look at $W^T$ as being:
+We can write:
 
 $$
-W^T = \begin{bmatrix}
-w_0 & w_1 & w_2 & w_3 & w_4
+\mathbf{W}^\top = \begin{bmatrix}
+\mathbf{w}_0 & \mathbf{w}_1 & \mathbf{w}_2 & \mathbf{w}_3 & \mathbf{w}_4
 \end{bmatrix}
 $$
 
-We can similarly look at $x$ as a bunch of embedding row vectors stacked up on top of eachother. One row vector for each element in the batch:
+Similarly, $\mathbf{x}$ is a stack of embedding row vectors:
 
 $$
-x = \begin{bmatrix}
-x_0 \\ 
-x_1 \\ 
-x_2 \\ 
+\mathbf{x} = \begin{bmatrix}
+\mathbf{x}_0 \\
+\mathbf{x}_1 \\
+\mathbf{x}_2 \\
 \vdots \\
 \end{bmatrix}
 $$
 
-Now we have:
+We can write:
 
 $$
-z = x \cdot W^T = \begin{bmatrix}
-x_0 \\ 
-x_1 \\ 
-x_2 \\ 
+\mathbf{z} = \mathbf{x} \cdot \mathbf{W}^\top = \begin{bmatrix}
+\mathbf{x}_0 \\
+\mathbf{x}_1 \\
+\mathbf{x}_2 \\
 \vdots \\
 \end{bmatrix}
 \cdot
 \begin{bmatrix}
-w_0 & w_1 & w_2 & w_3 & w_4
+\mathbf{w}_0 & \mathbf{w}_1 & \mathbf{w}_2 & \mathbf{w}_3 & \mathbf{w}_4
 \end{bmatrix}
 $$
 
 A useful way to think of the dot product of two matrices is that you are taking the dot products of the row vectors on the left with the column vectors on the right, which gives us:
 
 $$
-z = \begin{bmatrix}
-x_0 \cdot w_0 & x_0 \cdot w_1 & x_0 \cdot w_2 & x_0 \cdot w_3 & x_0 \cdot w_4 \\
-x_1 \cdot w_0 & x_1 \cdot w_1 & x_1 \cdot w_2 & x_1 \cdot w_3 & x_1 \cdot w_4 \\
-x_2 \cdot w_0 & x_2 \cdot w_1 & x_2 \cdot w_2 & x_2 \cdot w_3 & x_2 \cdot w_4 \\
+\mathbf{z} = \begin{bmatrix}
+\mathbf{x}_0 \cdot \mathbf{w}_0 & \mathbf{x}_0 \cdot \mathbf{w}_1 & \mathbf{x}_0 \cdot \mathbf{w}_2 & \mathbf{x}_0 \cdot \mathbf{w}_3 & \mathbf{x}_0 \cdot \mathbf{w}_4 \\
+\mathbf{x}_1 \cdot \mathbf{w}_0 & \mathbf{x}_1 \cdot \mathbf{w}_1 & \mathbf{x}_1 \cdot \mathbf{w}_2 & \mathbf{x}_1 \cdot \mathbf{w}_3 & \mathbf{x}_1 \cdot \mathbf{w}_4 \\
+\mathbf{x}_2 \cdot \mathbf{w}_0 & \mathbf{x}_2 \cdot \mathbf{w}_1 & \mathbf{x}_2 \cdot \mathbf{w}_2 & \mathbf{x}_2 \cdot \mathbf{w}_3 & \mathbf{x}_2 \cdot \mathbf{w}_4 \\
 \vdots & \vdots & \vdots & \vdots & \vdots
 \end{bmatrix}
 $$
 
-So the output of the linear layer is the dot product of each embedding with each class center. These are called the logits. For each embedding, the largest logit determines the predicted class. Let's look at a specific example. Suppose we have an input like the following:
+So the output of the linear layer is the dot product of each embedding with each class center. These are called the logits. For each embedding, the largest logit determines the predicted class. 
+
+### Embeddings and Class Centers
+
+Each embedding produced by our network is just a point in the same space as the class center vectors. If the network has learned well, embeddings for the same class will tend to cluster in relation to their corresponding class center.
+
+Below (left) is a scatter plot of all embeddings from the test set, colored by their true class, with the learned class centers shown as black stars. The class centers have much smaller magnitudes than the embeddings, so they appear bunched up near the origin. To make them visible, the right plot shows a zoomed-in view around the origin:
+
+![Softmax embeddings with class centers](softmax_embeddings_zoomed.png)
+
+Notice how, even though the embeddings themselves are far from the origin, the class centers occupy a very small region. This scale difference is one reason we’ll later discuss normalization—to bring embeddings and class centers onto a comparable scale.
+
+### Decision Boundaries
+
+The class center vectors also define the decision boundaries between classes. For any two classes $i$ and $j$, the decision boundary is the set of points where:
+
+$$
+\mathbf{x} \cdot \mathbf{w}_i = \mathbf{x} \cdot \mathbf{w}_j
+$$
+
+which simplifies to:
+
+$$
+\mathbf{x} \cdot (\mathbf{w}_i - \mathbf{w}_j) = 0
+$$
+
+This is the equation of a hyperplane passing through the origin in the embedding space. On one side of the hyperplane, class $i$ has the larger logit; on the other side, class $j$ does.
+
+In two dimensions, these hyperplanes are simply straight lines through the origin. Here are two examples:
+
+![Decision boundaries for classes 0 and 3 and 0 and 2](softmax_boundaries_0_3_0_2.png)
+
+In each plot, the line marks where the logits for the two classes are equal. Points on one side give a higher logit to one class; points on the other side give a higher logit to the other. In a multi-class setting, the final predicted class is whichever class has the highest logit overall, so a point might fall on one side of this line but still be predicted as a different class entirely.
+
+### A Single Example
+
+Let's zoom in on a single example. Suppose we have an input like the following:
 
 ![digit 0 input image](digit_0.png)
 
@@ -187,20 +226,20 @@ x_0 = \begin{bmatrix}
 \end{bmatrix}
 $$
 
-Now that we have the embedding, we can compute the logits, $z$:
+We can write the logits, given the embedding, as:
 
 $$
 \begin{align*}
-z & = x \cdot W^T \\
+\mathbf{z} & = \mathbf{x} \cdot \mathbf{W}^\top \\
  & = \begin{bmatrix}
-x_0 \\
+\mathbf{x}_0 \\
 \end{bmatrix}
 \cdot
 \begin{bmatrix}
-w_0 & w_1 & w_2 & w_3 & w_4
+\mathbf{w}_0 & \mathbf{w}_1 & \mathbf{w}_2 & \mathbf{w}_3 & \mathbf{w}_4
 \end{bmatrix} \\
 & =\begin{bmatrix}
-x_0 \cdot w_0 & x_0 \cdot w_1 & x_0 \cdot w_2 & x_0 \cdot w_3 & x_0 \cdot w_4 \\
+\mathbf{x}_0 \cdot \mathbf{w}_0 & \mathbf{x}_0 \cdot \mathbf{w}_1 & \mathbf{x}_0 \cdot \mathbf{w}_2 & \mathbf{x}_0 \cdot \mathbf{w}_3 & \mathbf{x}_0 \cdot \mathbf{w}_4 \\
 \end{bmatrix} \\
 & = \begin{bmatrix}
 \begin{bmatrix}
@@ -227,110 +266,91 @@ x_0 \cdot w_0 & x_0 \cdot w_1 & x_0 \cdot w_2 & x_0 \cdot w_3 & x_0 \cdot w_4 \\
 \end{align*}
 $$
 
-We can see that the dot product of $x_0$ with the class center $w_0$ is the largest, which makes sense since $x_0$ was the embedding of an image of a "0" and $w_0$ is the class center for the 0-digit class.
+Here, $\mathbf{x}_0 \cdot \mathbf{w}_0$ is largest, correctly predicting the "0" class.
 
-The dot product has a relevant geometric interpretation, it is the magnitude of the vectors scaled by the cosine of the angle inbetween them:
+The dot product has a relevant geometric interpretation. It is the magnitude of the vectors scaled by the cosine of the angle between them:
 
 $$
-v \cdot u = \|u\|\|v\|cosine(\theta)
+\mathbf{v} \cdot \mathbf{u} = \|\mathbf{u}\|\|\mathbf{v}\|\cos(\theta)
 $$
 
-When $\theta$ is 0, the cosine is 1, making the dot product just the product of the vector magnitudes. When $\theta$ is 90 degrees, the cosine is 0 as is the dot product. When $\theta$ is 180 degrees, the cosine is -1 and the dot product is the product of the magnitude of the vectors times -1. If we plot the vector of our embedding with the vectors of the class centers, we get the following:
+* $\theta$ = 0° \rightarrow dot product is the product of magnitudes (max positive)
+* $\theta$ = 90° \rightarrow dot product is 0 since $\cos(90°) = 0$
+* $\theta$ = 180° \rightarrow dot product is the product of magnitudes times -1 since $\cos(180°) = -1$ (max negative)
 
+<!--
+With this geometric view in mind, we can now zoom in on a single example to see exactly how the dot product determines which side of these boundaries an embedding falls on.
+-->
+
+Plotting the embedding and class centers:
+ 
 ![Plot digit 0 with class centers](digit_0_sample_plotted.png)
-
-If we look at the vectors for the class centers, they all have similar and relatively low magnitudes and so cluster around the origin. The the class centers $w_1$ and 4 point in the opposite direction of our sample, which lines up with the negative dot products of -13.03 and -10.52 respectively that we calculated earlier. Since the angle in between the sample's vector and that of the class centers for 2, 0, and 3 is less than 90 degrees, the dot products for them are all positive. However, the angle between class 0 and the sample is quite small, so it ends up having the largest dot product of 18.30.
+ 
+The class centers are clustered around the origin with small, similar magnitudes. $\mathbf{w}_1$ and $\mathbf{w}_4$ point roughly opposite our sample, matching their large negative dot products of -13.03 and -10.52 respectively. $\mathbf{w}_0$, $\mathbf{w}_2$, and $\mathbf{w}_3$ have angles under 90° with our sample, so their dot products are positive. Class 0's vector, $\mathbf{w}_0$, is most aligned with the sample, giving the largest dot product: 18.30.
 
 ### Softmax
 
 Now that we've looked at embeddings and their relationship to the class centers, now we need to figure out how to turn our logits into a probability distribution. If we look at the logits from our previous example:
 
 $$
-z = \begin{bmatrix}
+\mathbf{z} = \begin{bmatrix}
   18.30 & -13.03 & 8.16 & 6.22 & -10.52 \\
 \end{bmatrix}
 $$
 
-From the logits, we can tell that 0 should be the most likely class and 1 the least likely. Lets break up this row vector into the logits for each class. We'll say $z_0$ is the logit for class 0, $z_1$ is the logit for class 1, etc. We can then sort them from most to least likely:
+It's clear that class 0 has the largest logit and class 1 the smallest. But logits aren't probabilities—they can be negative, and they don't sum to 1.
 
-$$
-\begin{align*}
-z_0 & = 18.30 & & z_0 = & 18.30 \\
-z_1 & = -13.03 & & z_2 = & 8.16 \\
-z_2 & = 8.16 & \text{sort} \rightarrow  \text{ }& z_3 = & 6.22 \\
-z_3 & = 6.22 & & z_4 = & -10.52 \\
-z_4 & = -10.52 & & z_1 = & -13.03
-\end{align*}
-$$
-
-To get a probability distribution, we might be tempted to just add all the logits together and divide each logit by the sum. However, some of the logits are negative... so that won't work. Here's a trick though, what if we raise 10 by the power of each logit:
+What if we transform each logit into a positive number that preserves their ordering? One way to do that is to raise a positive base to each logit. For illustration, let's use 10 as the base:
 
 $$
 \begin{aligned}
-z_0 &=  18.30 \\
-z_2 &=  8.16 \\
-z_3 &=  6.22  \\
-z_4 &=  -10.52 \\
-z_1 &=  -13.03 \\
+10^{18.30} & = 2.00 \times 10^{18} \\
+10^{8.16} & = 1.45 \times 10^8 \\
+10^{6.22} & = 1.67 \times 10^6 \\
+10^{-10.52} & = 3.05 \times 10^{-11} \\
+10^{-13.03} & = 9.23 \times 10^{-14} \\
 \end{aligned}
-\quad
-\rightarrow
-\quad
+$$
+
+
+This transformation preserves the ranking of the logits but makes all values positive. Now we can sum them and divide each by the sum to get something that behaves like a probability:
+
+$$
 \begin{aligned}
-10^{z_0} &= 10^{18.30} &=& 2.00 \times 10^{18} \\
-10^{z_2} &= 10^{8.16} &=& 1.45 \times 10^8 \\
-10^{z_3} &= 10^{6.22} &=& 1.67 \times 10^6 \\
-10^{z_4} &= 10^{-10.52} &=& 3.05 \times 10^{-11} \\
-10^{z_1} &= 10^{-13.03} &=& 9.23 \times 10^{-14} \\
+prob_i &= \frac{10^{z_i}}{\sum{10^{z_k}}} \\
 \end{aligned}
 $$
 
-Notice that this transformation didn't change the ordering of the logits. $z_0$ is still the most likely and $z_1$ the least. However, it has transformed our negative numbers into really small, but positive, numbers. Now we can sum the numbers together and divide to get our probabilities:
+In practice, softmax does the same thing, except it uses $e$ (Euler's number) instead of 10:
 
 $$
-\begin{align*}
-\sum{10^{z_i}} &= 2.00 \times 10^{18} + \dots +  9.23 \times 10^{-14} \\
-&\approx 2.00 \times 10^{18}
-\end{align*} 
+\begin{aligned}
+softmax(z)_i &= \frac{e^{z_i}}{\sum{e^{z_k}}} \\
+\end{aligned}
 $$
 
-$$
-\begin{align*}
-\frac{10^{z_0}}{2.00 \times 10^{18}} \approx 1.00 \\
-\frac{10^{z_2}}{2.00 \times 10^{18}} \approx 0.00 \\
-\frac{10^{z_3}}{2.00 \times 10^{18}} \approx 0.00 \\
-\frac{10^{z_4}}{2.00 \times 10^{18}} \approx 0.00 \\
-\frac{10^{z_1}}{2.00 \times 10^{18}} \approx 0.00 \\
-\end{align*}
-$$
-
-This is exactly what the softmax function does, except instead of using 10, it uses Euler's number, $e$:
+For our example:
 
 $$
-\begin{align*}
-\sum{e^{z_i}} &= e^{z_0} + \dots + e^{z_4} \\
-&= e^{18.30} + \dots + e^{-10.52} \\
-&= 8.85 \times 10^7
-\end{align*}
+\sum{e^{z_k}} = e^{18.30} + e^{-13.03} + e^{8.16} + e^{6.22} + e^{-10.52} \\
+ \approx 8.85 \times 10^7
 $$
 
 $$
-\begin{align*}
-\frac{e^{z_0}}{8.85 \times 10^7} \approx 1.00 \\
-\frac{e^{z_2}}{8.85 \times 10^7} \approx 0.00 \\
-\frac{e^{z_3}}{8.85 \times 10^7} \approx 0.00 \\
-\frac{e^{z_4}}{8.85 \times 10^7} \approx 0.00 \\
-\frac{e^{z_1}}{8.85 \times 10^7} \approx 0.00 \\
-\end{align*}
+softmax(z) \approx \begin{bmatrix}
+1.00 \\
+0.00 \\
+0.00 \\
+0.00 \\
+0.00 \\
+\end{bmatrix}
 $$
 
-In this case, the model indicates our sample, with embedding $x_0$, has essentially a 100% chance of being the digit 0. Succinctly, if we have a vector $z$, then the softmax of $z$ is defined componentwise by:
+So the model assigns essentially 100% probability to class "0" for this sample.
 
-$$
-\sigma(z)_i = \frac{e^{z_i}}{\sum{e^{z_k}}}
-$$
+(In real code, we subtract $max(z)$ from all logits before exponentiating to avoid overflow issues, but the math is the same.)
 
-Okay, so now we've covered how to get from embeddings to a probability distribution. Now let's look at why this isn't good enough when we do not know all the classes up-front.
+Okay—now we’ve covered how to get from embeddings to a probability distribution. Next, we’ll look at why this isn’t good enough when we don’t know all the classes up front.
 
 
 ## Trouble with Open Ended Classes
@@ -367,8 +387,8 @@ If we compute the Dunn Index for our current softmax model, we get a value of 5.
 You'll recall that we have the following calculation for the logits:
 
 $$
-z = \begin{bmatrix}
-x_0 \cdot w_0 & x_0 \cdot w_1 & x_0 \cdot w_2 & x_0 \cdot w_3 & x_0 \cdot w_4 \\
+\mathbf{z} = \begin{bmatrix}
+\mathbf{x}_0 \cdot \mathbf{w}_0 & \mathbf{x}_0 \cdot \mathbf{w}_1 & \mathbf{x}_0 \cdot \mathbf{w}_2 & \mathbf{x}_0 \cdot \mathbf{w}_3 & \mathbf{x}_0 \cdot \mathbf{w}_4 \\
 \vdots & \vdots & \vdots & \vdots & \vdots
 \end{bmatrix}
 $$
@@ -376,7 +396,7 @@ $$
 During training, the model tries to maximize the dot product of the embedding with the class center for the correct class, while minimizing the dot products with all other classes. How can the model increase the dot product? Let's take another loot at the definition of the dot product:
 
 $$
-u \cdot v = |u||v| cos \theta
+\mathbf{u} \cdot \mathbf{v} = |\mathbf{u}||\mathbf{v}| \cos \theta
 $$
 
 We can increase the dot product by increasing the magnitudes of either $u$ or $v$, or by decreasing the angle $\theta$ between them. If we look at the embedding space, we can see that increasing the magnitudes of the embeddings is often how things go:
@@ -388,8 +408,8 @@ Notice how the embedding for each class stretch out from the origin. Increasing 
 In [NormFace: L₂ Hypersphere Embedding for Face Verification (Wang et al, 2017)](https://arxiv.org/abs/1704.06369) they address the problem by normalizing the embeddings and the class centers before computing the dot product. This means the magnitudes of the embeddings and class centers are always 1, so the dot product is simply the cosine of the angle between them. Now the logits are computed as follows:
 
 $$
-z = \begin{bmatrix}
-\frac{x_0}{\lVert x_0 \rVert} \cdot \frac{w_0}{\lVert w_0 \rVert} & \frac{x_0}{\lVert x_0 \rVert} \cdot \frac{w_1}{\lVert w_1 \rVert} & \dots & \frac{x_0}{\lVert x_0 \rVert} \cdot \frac{w_4}{\lVert w_4 \rVert} \\
+\mathbf{z} = \begin{bmatrix}
+\frac{\mathbf{x}_0}{\lVert \mathbf{x}_0 \rVert} \cdot \frac{\mathbf{w}_0}{\lVert \mathbf{w}_0 \rVert} & \frac{\mathbf{x}_0}{\lVert \mathbf{x}_0 \rVert} \cdot \frac{\mathbf{w}_1}{\lVert \mathbf{w}_1 \rVert} & \dots & \frac{\mathbf{x}_0}{\lVert \mathbf{x}_0 \rVert} \cdot \frac{\mathbf{w}_4}{\lVert \mathbf{w}_4 \rVert} \\
 \vdots & \vdots & & \vdots
 \end{bmatrix}
 $$
@@ -452,8 +472,8 @@ Calculating the Dunn Index for this model, we get 29.11, a clear improvement ove
 Now that we have normalized the embeddings and class centers, rather than writing the dot product for the logits as:
 
 $$
-z = \begin{bmatrix}
-\frac{x_0}{\lVert x_0 \rVert} \cdot \frac{w_0}{\lVert w_0 \rVert} & \frac{x_0}{\lVert x_0 \rVert} \cdot \frac{w_1}{\lVert w_1 \rVert} & \dots & \frac{x_0}{\lVert x_0 \rVert} \cdot \frac{w_4}{\lVert w_4 \rVert} \\
+\mathbf{z} = \begin{bmatrix}
+\frac{\mathbf{x}_0}{\lVert \mathbf{x}_0 \rVert} \cdot \frac{\mathbf{w}_0}{\lVert \mathbf{w}_0 \rVert} & \frac{\mathbf{x}_0}{\lVert \mathbf{x}_0 \rVert} \cdot \frac{\mathbf{w}_1}{\lVert \mathbf{w}_1 \rVert} & \dots & \frac{\mathbf{x}_0}{\lVert \mathbf{x}_0 \rVert} \cdot \frac{\mathbf{w}_4}{\lVert \mathbf{w}_4 \rVert} \\
 \vdots & \vdots & & \vdots
 \end{bmatrix}
 $$
@@ -461,24 +481,24 @@ $$
 We can instead write it as:
 
 $$
-z = \begin{bmatrix}
-cos(\theta_{x_0,w_0}) & cos(\theta_{x_0,w_1}) & \dots & cos(\theta_{x_0,w_4}) \\
+\mathbf{z} = \begin{bmatrix}
+cos(\theta_{\mathbf{x}_0,\mathbf{w}_0}) & cos(\theta_{\mathbf{x}_0,\mathbf{w}_1}) & \dots & cos(\theta_{\mathbf{x}_0,\mathbf{w}_4}) \\
 \vdots & \vdots & & \vdots
 \end{bmatrix}
 $$
 
-Where $\theta_{x_0,w_i}$ is the angle between the embedding $x_0$ and the class center $w_i$. We can do this because the dot product is $|u||v| cos(\theta)$, and since we have normalized the embeddings and class centers, the magnitudes are both 1. So the dot product is simply the cosine of the angle between them.
+Where $\theta_{\mathbf{x}_0,\mathbf{w}_i}$ is the angle between the embedding $\mathbf{x}_0$ and the class center $\mathbf{w}_i$. We can do this because the dot product is $|u||v| cos(\theta)$, and since we have normalized the embeddings and class centers, the magnitudes are both 1. So the dot product is simply the cosine of the angle between them.
 
-Where ArcFace comes in is by adding a margin to the angle between the embedding and the class center for the correct class during training. This is done by adding a margin $m$, a hyperparameter, to the angle for the correct class. So if we have an embedding sample $x_0$ representing the digit 0, we would compute the logits as follows:
+Where ArcFace comes in is by adding a margin to the angle between the embedding and the class center for the correct class during training. This is done by adding a margin $m$, a hyperparameter, to the angle for the correct class. So if we have an embedding sample $\mathbf{x}_0$ representing the digit 0, we would compute the logits as follows:
 
 $$
-z = \begin{bmatrix}
-cos(\theta_{x_0,w_0} + m) & cos(\theta_{x_0,w_1}) & \dots & cos(\theta_{x_0,w_4}) \\
+\mathbf{z} = \begin{bmatrix}
+cos(\theta_{\mathbf{x}_0,\mathbf{w}_0} + m) & cos(\theta_{\mathbf{x}_0,\mathbf{w}_1}) & \dots & cos(\theta_{\mathbf{x}_0,\mathbf{w}_4}) \\
 \vdots & \vdots & & \vdots
 \end{bmatrix}
 $$
 
-What does this do? Suppose $\theta_{x_0,w_0}$ is 0.5 radians (approximately 29 degrees), then the logit for the correct class would be `cos(0.5) = 0.88`. Now lets say we add this margin, $m$, with a value of 0.5. Then we'd have `cos(\theta_{x_0,w_0} + m) = cos(0.5 + 0.5) = 0.54`. Critically, we only add this margin to the angle for the correct class, so the logits for the other classes remain unchanged. This effectively reduces the probability of the sample being classified as the correct class, and increases the probability of it being classified as one of the other classes. During training, this forces the model to reduce the angles, $\theta$, even further between the embeddings and the class centers. By reducing the angles, we pull samples away from the class boundaries and towards the class centers, which creates more cohesive clusters and better separates the classes.
+What does this do? Suppose $\theta_{\mathbf{x}_0,\mathbf{w}_0}$ is 0.5 radians (approximately 29 degrees), then the logit for the correct class would be `cos(0.5) = 0.88`. Now lets say we add this margin, $m$, with a value of 0.5. Then we'd have `cos(\theta_{\mathbf{x}_0,\mathbf{w}_0} + m) = cos(0.5 + 0.5) = 0.54`. Critically, we only add this margin to the angle for the correct class, so the logits for the other classes remain unchanged. This effectively reduces the probability of the sample being classified as the correct class, and increases the probability of it being classified as one of the other classes. During training, this forces the model to reduce the angles, $\theta$, even further between the embeddings and the class centers. By reducing the angles, we pull samples away from the class boundaries and towards the class centers, which creates more cohesive clusters and better separates the classes.
 
 To help us understand how to implement this, lets look at a real example. Consider the sample from out traing data that we used earlier:
 
@@ -487,7 +507,7 @@ To help us understand how to implement this, lets look at a real example. Consid
 Since this is a different model, we will have a different embedding for the sample, which is:
 
 $$
-x_0 =\begin{bmatrix}
+\mathbf{x}_0 =\begin{bmatrix}
   0.62 & 0.78 \\
 \end{bmatrix}
 $$
@@ -495,7 +515,7 @@ $$
 We have the following for our classifier weights, $W^T$:
 
 $$
-W^T = \begin{bmatrix}
+\mathbf{W}^\top = \begin{bmatrix}
   0.37 & 0.46 \\
   -0.35 & 0.49 \\
   -0.05 & -1.19 \\
@@ -508,23 +528,23 @@ Which gives us the following class centers:
 
 $$
 \begin{align*}
-w_0 = & \begin{bmatrix}
+\mathbf{w}_0 = & \begin{bmatrix}
   0.37 \\
   0.46 \\
 \end{bmatrix}
-& w_1 = & \begin{bmatrix}
+& \mathbf{w}_1 = & \begin{bmatrix}
   -0.35 \\
   0.49 \\
 \end{bmatrix}
-& w_2 = & \begin{bmatrix}
+& \mathbf{w}_2 = & \begin{bmatrix}
   -0.05 \\
   -1.19 \\
 \end{bmatrix} \\
-w_3 = & \begin{bmatrix}
+\mathbf{w}_3 = & \begin{bmatrix}
   0.34 \\
   -0.12 \\
 \end{bmatrix}
-& w_4 = & \begin{bmatrix}
+& \mathbf{w}_4 = & \begin{bmatrix}
   -0.45 \\
   -0.14 \\
 \end{bmatrix}
@@ -535,8 +555,8 @@ Now we can compute the logits:
 
 $$
 \begin{align*}
-z & = \begin{bmatrix}
-x_0 \cdot w_0 & x_0 \cdot w_1 & x_0 \cdot w_2 & x_0 \cdot w_3 & x_0 \cdot w_4 \\
+\mathbf{z} & = \begin{bmatrix}
+\mathbf{x}_0 \cdot \mathbf{w}_0 & \mathbf{x}_0 \cdot \mathbf{w}_1 & \mathbf{x}_0 \cdot \mathbf{w}_2 & \mathbf{x}_0 \cdot \mathbf{w}_3 & \mathbf{x}_0 \cdot \mathbf{w}_4 \\
 \end{bmatrix} \\
 & = \begin{bmatrix}
 \begin{bmatrix}
@@ -563,18 +583,18 @@ x_0 \cdot w_0 & x_0 \cdot w_1 & x_0 \cdot w_2 & x_0 \cdot w_3 & x_0 \cdot w_4 \\
   0.59 & 0.16 & -0.96 & 0.11 & -0.39 \\
 \end{bmatrix} \\
 & = \begin{bmatrix}
-cos(\theta_{x_0,w_0})  & \dots & cos(\theta_{x_0,w_4}) \\
+cos(\theta_{\mathbf{x}_0,\mathbf{w}_0})  & \dots & cos(\theta_{\mathbf{x}_0,\mathbf{w}_4}) \\
 \end{bmatrix}
 \end{align*}
 $$
 
-Now we know our values for the logits, and consequently the angles, $\theta$, between the embedding and the class centers. We get all of this already from the normalized softmax model. Now we just need to add the margin, $m$, to the angle for the correct class. Let's say we choose a margin of 0.5 radians. The correct class is 0, so we need to find the value of $cos(\theta_{x_0,w_0} + m)$. Well, we know $\cos(\theta_{x_0,w_0}) = 0.59$... but how do we add the margin? Many years ago, back in trigonometry class, you were learning about trigonometric identities and were probably wondering when you would ever possibly use them. Well, today is the day! We can use the cosine addition formula to compute this:
+Now we know our values for the logits, and consequently the angles, $\theta$, between the embedding and the class centers. We get all of this already from the normalized softmax model. Now we just need to add the margin, $m$, to the angle for the correct class. Let's say we choose a margin of 0.5 radians. The correct class is 0, so we need to find the value of $cos(\theta_{\mathbf{x}_0,\mathbf{w}_0} + m)$. Well, we know $\cos(\theta_{\mathbf{x}_0,\mathbf{w}_0}) = 0.59$... but how do we add the margin? Many years ago, back in trigonometry class, you were learning about trigonometric identities and were probably wondering when you would ever possibly use them. Well, today is the day! We can use the cosine addition formula to compute this:
 
 $$
 cos(\theta + m) = cos(\theta)cos(m) - sin(\theta)sin(m)
 $$
 
-We know $\cos(\theta_{x_0,w_0}) = 0.59$, and we can compute $\cos(m)$ and $\sin(m)$ since we know the margin, $m$, is 0.5 radians:
+We know $\cos(\theta_{\mathbf{x}_0,\mathbf{w}_0}) = 0.59$, and we can compute $\cos(m)$ and $\sin(m)$ since we know the margin, $m$, is 0.5 radians:
 
 $$
 \begin{align*}
@@ -583,7 +603,7 @@ $$
 \end{align*}
 $$
 
-Now we just need to compute $\sin(\theta_{x_0,w_0})$. We can do this using the Pythagorean identity:
+Now we just need to compute $\sin(\theta_{\mathbf{x}_0,\mathbf{w}_0})$. We can do this using the Pythagorean identity:
 
 $$
 \sin^2(\theta) + \cos^2(\theta) = 1 \quad\rightarrow\quad
@@ -593,21 +613,21 @@ $$
 So we have:
 
 $$
-\sin(\theta_{x_0,w_0}) = \sqrt{1 - (\cos(\theta_{x_0,w_0}))^2} = \sqrt{1 - 0.59^2} \approx 0.81
+\sin(\theta_{\mathbf{x}_0,\mathbf{w}_0}) = \sqrt{1 - (\cos(\theta_{\mathbf{x}_0,\mathbf{w}_0}))^2} = \sqrt{1 - 0.59^2} \approx 0.81
 $$
 
 Now we can compute the logit for the correct class:
 
 $$
 \begin{align*}
-z_0 & = cos(\theta_{x_0,w_0} + m) \\
-& = cos(\theta_{x_0,w_0})cos(m) - sin(\theta_{x_0,w_0})sin(m) \\
+z_0 & = cos(\theta_{\mathbf{x}_0,\mathbf{w}_0} + m) \\
+& = cos(\theta_{\mathbf{x}_0,\mathbf{w}_0})cos(m) - sin(\theta_{\mathbf{x}_0,\mathbf{w}_0})sin(m) \\
 & = 0.59 \cdot 0.88 - 0.81 \cdot 0.48 \\
 & \approx 0.52
 \end{align*}
 $$
 
-Before we get to the code, there is one more pesky little problem. When we add this margin to a logit, the goal is to make the logit smaller so that it is harder to classify the sample correctly. However, there is an edge case where adding the margin actually increases the logit. Suppose by some twist of fate $\theta_{x_0,w_0}$ is actually $\pi$ radians. In this scenario, the $\cos(\theta_{x_0,w_0})$ would be -1, the smallest possible value for the cosine of an angle. If we add a margin of 0.5 radians, then we would have $\cos(\theta_{x_0,w_0} + m) = \cos(\pi + 0.5) \approx -0.88$. This is actually larger than -1, which is not what we want. This problem arises any time that $\cos(\theta_{x_0,w_0}) < \cos(\pi - m)$.
+Before we get to the code, there is one more pesky little problem. When we add this margin to a logit, the goal is to make the logit smaller so that it is harder to classify the sample correctly. However, there is an edge case where adding the margin actually increases the logit. Suppose by some twist of fate $\theta_{\mathbf{x}_0,\mathbf{w}_0}$ is actually $\pi$ radians. In this scenario, the $\cos(\theta_{\mathbf{x}_0,\mathbf{w}_0})$ would be -1, the smallest possible value for the cosine of an angle. If we add a margin of 0.5 radians, then we would have $\cos(\theta_{\mathbf{x}_0,\mathbf{w}_0} + m) = \cos(\pi + 0.5) \approx -0.88$. This is actually larger than -1, which is not what we want. This problem arises any time that $\cos(\theta_{\mathbf{x}_0,\mathbf{w}_0}) < \cos(\pi - m)$.
 
 So how do we fix this problem? Well, the paper doesn't seem to address this case. If we think about the scenario when this happens, it is when the embedding is pointing in the opposite direction of the class center. If the embedding and the class center are pointing in opposite directions, then the logit for the correct class would already be quite small. Sure adding the margin might, unintentionally, increase the size of the logit instead of decreasing it, but it's a small favor as the logit will still suck anyway. My solution to the problem is to just pretend it doesn't exist, and it seems to work well enough.
 
@@ -671,7 +691,7 @@ After training the model, we get a Dunn Index of 442.80, substantially better th
 Typically with both ArcFace and Normalized Softmax, we would use a scaling factor, $s$, to scale the logits (you can see this in the code above). The reason for this is that the logits, being cosine values, are in a very small range between -1 and 1. What this means is that our probability distribution will be very flat, with all classes having similar probabilities. For example, consider the following logits:
 
 $$
-z = \begin{bmatrix}
+\mathbf{z} = \begin{bmatrix}
   1.0 & -1.0 & -1.0 & -1.0 & -1.0 \\
 \end{bmatrix}
 $$
@@ -680,7 +700,7 @@ For class 0, we have the highest possible logit under normalized softmax: 1.0. T
 
 $$
 \begin{align*}
-softmax(z) & = \begin{bmatrix}
+softmax(\mathbf{z}) & = \begin{bmatrix}
   \frac{e^{1.0}}{\sum{e^{z_i}}} & \frac{e^{-1.0}}{\sum{e^{z_i}}} & \dots & \frac{e^{-1.0}}{\sum{e^{z_i}}}\\
 \end{bmatrix} \\
 & \approx \begin{bmatrix}
@@ -693,7 +713,7 @@ In the best possible case, the maximum probability we can assign to a class is 6
 
 $$
 \begin{align*}
-z & = 20 \cdot \begin{bmatrix}
+\mathbf{z} & = 20 \cdot \begin{bmatrix}
   1.0 & -1.0 & -1.0 & -1.0 & -1.0 \\
 \end{bmatrix} \\
 & = \begin{bmatrix}
@@ -704,7 +724,7 @@ $$
 
 $$
 \begin{align*}
-softmax(z) & = \begin{bmatrix}
+softmax(\mathbf{z}) & = \begin{bmatrix}
   \frac{e^{20.0}}{\sum{e^{z_i}}} & \frac{e^{-20.0}}{\sum{e^{z_i}}} & \dots & \frac{e^{-20.0}}{\sum{e^{z_i}}}\\
 \end{bmatrix} \\
 & \approx \begin{bmatrix}
