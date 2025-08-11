@@ -325,7 +325,7 @@ In practice, softmax does the same thing, except it uses $e$ (Euler's number) in
 
 $$
 \begin{aligned}
-softmax(z)_i &= \frac{e^{z_i}}{\sum{e^{z_k}}} \\
+\operatorname{softmax}(z)_i &= \frac{e^{z_i}}{\sum{e^{z_k}}} \\
 \end{aligned}
 $$
 
@@ -337,7 +337,7 @@ $$
 $$
 
 $$
-softmax(z) \approx \begin{bmatrix}
+\operatorname{softmax}(z) \approx \begin{bmatrix}
 1.00 \\
 0.00 \\
 0.00 \\
@@ -430,7 +430,7 @@ Notice how the points for each class radiate outward from the origin. This magni
 In [NormFace: L₂ Hypersphere Embedding for Face Verification (Wang et al, 2017)](https://arxiv.org/abs/1704.06369), the authors address this by normalizing both the embeddings and the class centers before computing the dot product. This forces:
 
 $$
-\|\mathbf{x}_i\| = 1 \quadd  \text{and} \quadd \|\mathbf{w}_j\| = 1
+\|\mathbf{x}_i\| = 1 \quad  \text{and} \quad \|\mathbf{w}_j\| = 1
 $$
 
 So the dot product is simply:
@@ -520,25 +520,31 @@ We can instead write it as:
 
 $$
 \mathbf{z} = \begin{bmatrix}
-cos(\theta_{\mathbf{x}_0,\mathbf{w}_0}) & cos(\theta_{\mathbf{x}_0,\mathbf{w}_1}) & \dots & cos(\theta_{\mathbf{x}_0,\mathbf{w}_4}) \\
+\cos(\theta_{\mathbf{x}_0,\mathbf{w}_0}) & \cos(\theta_{\mathbf{x}_0,\mathbf{w}_1}) & \dots & \cos(\theta_{\mathbf{x}_0,\mathbf{w}_4}) \\
 \vdots & \vdots & & \vdots
 \end{bmatrix}
 $$
 
-Where $\theta_{\mathbf{x}_0,\mathbf{w}_i}$ is the angle between the embedding $\mathbf{x}_0$ and the class center $\mathbf{w}_i$. We can do this because the dot product is $|u||v| cos(\theta)$, and since we have normalized the embeddings and class centers, the magnitudes are both 1. So the dot product is simply the cosine of the angle between them.
+Here, $\theta_{\mathbf{x}_0,\mathbf{w}_i}$ is the angle between the embedding $\mathbf{x}_0$ and the class center $\mathbf{w}_i$. We can do this because the dot product is $\lVert u \rVert \lVert v \rVert \cos(\theta)$, and after normalization the magnitudes are both 1, so the dot product is simply the cosine of the angle.
 
-Where ArcFace comes in is by adding a margin to the angle between the embedding and the class center for the correct class during training. This is done by adding a margin $m$, a hyperparameter, to the angle for the correct class. So if we have an embedding sample $\mathbf{x}_0$ representing the digit 0, we would compute the logits as follows:
+Where ArcFace comes in is by adding an angular margin to the correct class during training. If $m$ is the margin (a hyperparameter), then for a sample $\mathbf{x}_0$ of class 0 the logits become:
 
 $$
 \mathbf{z} = \begin{bmatrix}
-cos(\theta_{\mathbf{x}_0,\mathbf{w}_0} + m) & cos(\theta_{\mathbf{x}_0,\mathbf{w}_1}) & \dots & cos(\theta_{\mathbf{x}_0,\mathbf{w}_4}) \\
+\cos(\theta_{\mathbf{x}_0,\mathbf{w}_0} + m) & \cos(\theta_{\mathbf{x}_0,\mathbf{w}_1}) & \dots & \cos(\theta_{\mathbf{x}_0,\mathbf{w}_4}) \\
 \vdots & \vdots & & \vdots
 \end{bmatrix}
 $$
 
-What does this do? Suppose $\theta_{\mathbf{x}_0,\mathbf{w}_0}$ is 0.5 radians (approximately 29 degrees), then the logit for the correct class would be `cos(0.5) = 0.88`. Now lets say we add this margin, $m$, with a value of 0.5. Then we'd have `cos(\theta_{\mathbf{x}_0,\mathbf{w}_0} + m) = cos(0.5 + 0.5) = 0.54`. Critically, we only add this margin to the angle for the correct class, so the logits for the other classes remain unchanged. This effectively reduces the probability of the sample being classified as the correct class, and increases the probability of it being classified as one of the other classes. During training, this forces the model to reduce the angles, $\theta$, even further between the embeddings and the class centers. By reducing the angles, we pull samples away from the class boundaries and towards the class centers, which creates more cohesive clusters and better separates the classes.
+What does this do? Suppose $\theta_{\mathbf{x}_0,\mathbf{w}_i}$ is 0.5 radians (~29°). Then the original logit is $\cos(0.5) \approx 0.88$. With $m=0.5$, it becomes:
 
-To help us understand how to implement this, lets look at a real example. Consider the sample from out traing data that we used earlier:
+$$
+\cos(\theta_{\mathbf{x}_0,\mathbf{w}_0} + m) = \cos(0.5 + 0.5) \approx 0.54
+$$
+
+This effectively reduces the probability of the sample being classified as the correct class and increases the probability of it being classified as one of the other classes. During training, this forces the model to reduce the angles, $\theta$, even further between the embeddings and the class centers. By reducing the angles, we pull samples away from the class boundaries and towards the class centers, which creates more cohesive clusters and better separates the classes.
+
+To help us understand how to implement this, let's look at a real example. Consider the sample that we used earlier:
 
 ![digit 0 input image](digit_0.png)
 
@@ -589,7 +595,7 @@ $$
 \end{align*}
 $$
 
-Now we can compute the logits:
+The logits are computed as follows:
 
 $$
 \begin{align*}
@@ -621,15 +627,15 @@ $$
   0.59 & 0.16 & -0.96 & 0.11 & -0.39 \\
 \end{bmatrix} \\
 & = \begin{bmatrix}
-cos(\theta_{\mathbf{x}_0,\mathbf{w}_0})  & \dots & cos(\theta_{\mathbf{x}_0,\mathbf{w}_4}) \\
+\cos(\theta_{\mathbf{x}_0,\mathbf{w}_0})  & \dots & \cos(\theta_{\mathbf{x}_0,\mathbf{w}_4}) \\
 \end{bmatrix}
 \end{align*}
 $$
 
-Now we know our values for the logits, and consequently the angles, $\theta$, between the embedding and the class centers. We get all of this already from the normalized softmax model. Now we just need to add the margin, $m$, to the angle for the correct class. Let's say we choose a margin of 0.5 radians. The correct class is 0, so we need to find the value of $cos(\theta_{\mathbf{x}_0,\mathbf{w}_0} + m)$. Well, we know $\cos(\theta_{\mathbf{x}_0,\mathbf{w}_0}) = 0.59$... but how do we add the margin? Many years ago, back in trigonometry class, you were learning about trigonometric identities and were probably wondering when you would ever possibly use them. Well, today is the day! We can use the cosine addition formula to compute this:
+We have the logits, and consequently the angles, $$\theta$$, between the embedding and the class centers. We get all of this already from the normalized softmax model. Now we just need to add the margin, $m$, to the angle for the correct class. Let's say we choose a margin of 0.5 radians. The correct class is 0, so we need to find the value of $$\cos(\theta_{\mathbf{x}_0,\mathbf{w}_0} + m)$$. Well, we know $$\cos(\theta_{\mathbf{x}_0,\mathbf{w}_0})=0.59$$... but how do we add the margin? Many years ago, back in trigonometry class, you were learning about trigonometric identities and were probably wondering when you would ever possibly use them. Well, today is the day! We can use the cosine addition formula to compute this:
 
 $$
-cos(\theta + m) = cos(\theta)cos(m) - sin(\theta)sin(m)
+\cos(\theta + m) = \cos(\theta)\cos(m) - \sin(\theta)\sin(m)
 $$
 
 We know $\cos(\theta_{\mathbf{x}_0,\mathbf{w}_0}) = 0.59$, and we can compute $\cos(m)$ and $\sin(m)$ since we know the margin, $m$, is 0.5 radians:
@@ -658,16 +664,16 @@ Now we can compute the logit for the correct class:
 
 $$
 \begin{align*}
-z_0 & = cos(\theta_{\mathbf{x}_0,\mathbf{w}_0} + m) \\
-& = cos(\theta_{\mathbf{x}_0,\mathbf{w}_0})cos(m) - sin(\theta_{\mathbf{x}_0,\mathbf{w}_0})sin(m) \\
+z_0 & = \cos(\theta_{\mathbf{x}_0,\mathbf{w}_0} + m) \\
+& = \cos(\theta_{\mathbf{x}_0,\mathbf{w}_0})\cos(m) - \sin(\theta_{\mathbf{x}_0,\mathbf{w}_0})\sin(m) \\
 & = 0.59 \cdot 0.88 - 0.81 \cdot 0.48 \\
-& \approx 0.52
+& \approx 0.13
 \end{align*}
 $$
 
-Before we get to the code, there is one more pesky little problem. When we add this margin to a logit, the goal is to make the logit smaller so that it is harder to classify the sample correctly. However, there is an edge case where adding the margin actually increases the logit. Suppose by some twist of fate $\theta_{\mathbf{x}_0,\mathbf{w}_0}$ is actually $\pi$ radians. In this scenario, the $\cos(\theta_{\mathbf{x}_0,\mathbf{w}_0})$ would be -1, the smallest possible value for the cosine of an angle. If we add a margin of 0.5 radians, then we would have $\cos(\theta_{\mathbf{x}_0,\mathbf{w}_0} + m) = \cos(\pi + 0.5) \approx -0.88$. This is actually larger than -1, which is not what we want. This problem arises any time that $\cos(\theta_{\mathbf{x}_0,\mathbf{w}_0}) < \cos(\pi - m)$.
+Before we get to the code, there is one more pesky little problem. When we add this margin to a logit, the goal is to make the logit smaller so that it is harder to classify the sample correctly. However, there is an edge case where adding the margin actually increases the logit. Suppose by some twist of fate $$\theta_{\mathbf{x}_0,\mathbf{w}_0}$$ is actually $$\pi$$ radians. In this scenario, the $$\cos(\theta_{\mathbf{x}_0,\mathbf{w}_0})$$ would be -1, the smallest possible value for the cosine of an angle. If we add a margin of 0.5 radians, then we would have $$\cos(\theta_{\mathbf{x}_0,\mathbf{w}_0} + m) = \cos(\pi + 0.5) \approx -0.88$$. This is actually larger than -1, which is not what we want. This situation can occur whenever $$\theta_{\mathbf{x}_0,\mathbf{w}_0} \in (\pi - m, \pi]$$, which is quivalent to $$\cos(\theta_{\mathbf{x}_0,\mathbf{w}_0}) < \cos(\pi - m)$$.
 
-So how do we fix this problem? Well, the paper doesn't seem to address this case. If we think about the scenario when this happens, it is when the embedding is pointing in the opposite direction of the class center. If the embedding and the class center are pointing in opposite directions, then the logit for the correct class would already be quite small. Sure adding the margin might, unintentionally, increase the size of the logit instead of decreasing it, but it's a small favor as the logit will still suck anyway. My solution to the problem is to just pretend it doesn't exist, and it seems to work well enough.
+So how do we fix this problem? Well, the paper doesn't seem to address this case. If we think about the scenario when this happens, it is when the embedding is pointing in the opposite direction of the class center. If the embedding and the class center are pointing in opposite directions, then the logit for the correct class would already be quite small. Sure adding the margin might, unintentionally, increase the size of the logit instead of decreasing it, but it's a small mercy for a terrible logit. My solution to the problem is to just pretend it doesn't exist, and it seems to work well enough.
 
 With all of that out of the way, here is the code for ArcFace Additive Margin Loss:
 
@@ -734,11 +740,11 @@ $$
 \end{bmatrix}
 $$
 
-For class 0, we have the highest possible logit under normalized softmax: 1.0. This is because largest value cosine can take is 1.0. For all the other classes, we have the lowest possible logit under normalized softmax: -1.0. If we apply the softmax function to these logits, we get:
+For class 0, we have the highest possible logit under normalized softmax: 1.0. This is because largest value cosine function can take is 1.0. For all the other classes, we have the lowest possible logit under normalized softmax: -1.0. If we apply the softmax function to these logits, we get:
 
 $$
 \begin{align*}
-softmax(\mathbf{z}) & = \begin{bmatrix}
+\operatorname{softmax}(\mathbf{z}) & = \begin{bmatrix}
   \frac{e^{1.0}}{\sum{e^{z_i}}} & \frac{e^{-1.0}}{\sum{e^{z_i}}} & \dots & \frac{e^{-1.0}}{\sum{e^{z_i}}}\\
 \end{bmatrix} \\
 & \approx \begin{bmatrix}
@@ -762,7 +768,7 @@ $$
 
 $$
 \begin{align*}
-softmax(\mathbf{z}) & = \begin{bmatrix}
+\operatorname{softmax}(\mathbf{z}) & = \begin{bmatrix}
   \frac{e^{20.0}}{\sum{e^{z_i}}} & \frac{e^{-20.0}}{\sum{e^{z_i}}} & \dots & \frac{e^{-20.0}}{\sum{e^{z_i}}}\\
 \end{bmatrix} \\
 & \approx \begin{bmatrix}
@@ -771,10 +777,14 @@ softmax(\mathbf{z}) & = \begin{bmatrix}
 \end{align*}
 $$
 
-Now we can have probabilites effectively ranging from 0% to 100%. This allows the model to overcome the high bias problem and better fit the training data. For the toy example we have been using, it really wasn't necessary to use a scaling factor, but in practice it would be. The ArcFace and NormFace papers take different approaches to how the scaling factor is specified. NormFaces adds a new scaling factor parameter which is learned during training, while ArcFace uses a hyperparameter.
+Now we can have probabilities effectively ranging from 0% to 100%. This allows the model to overcome the high bias problem and better fit the training data. For the toy example we have been using, it really wasn't necessary to use a scaling factor, but in practice it would be. The ArcFace and NormFace papers take different approaches to how the scaling factor is specified. NormFace adds a new scaling factor parameter which is learned during training, while ArcFace uses a hyperparameter.
 
-Another thing to address is that when we started I explained that we need embeddings with meaningful spatial relationships so that we can reliably handle classes not in the training data. However, so far, I've only shown examples for classes the model has seen during training. There are really two things we need for this to work: the embeddings need to be well clustered, and the embedding network must be able to generalize to unseen classes. The first part is what we have been focusing on here. Unfortunately, to get an embedding network that can generalize to unseen classes would take a much greater diversity of classes. Five classes representing digits is simply not enough for the embedding network to abstract that qualities that make a symbol distinct from any other symbol. For context, one of the smallest datasets you might use for training a face identification model is the VGGFace2 dataset with approximately 9,000 unique identities.
+Another thing to address is that when we started I explained that we need embeddings with meaningful spatial relationships so that we can reliably handle classes not in the training data. However, so far, I've only shown examples for classes the model has seen during training. There are really two things we need for this to work: the embeddings need to be well clustered, and the embedding network must be able to generalize to unseen classes. The first part is what we have been focusing on here. Unfortunately, to get an embedding network that can generalize to unseen classes would take a much greater diversity of classes. Five classes representing digits is simply not enough for the embedding network to abstract the qualities that make a symbol distinct from any other symbol. For context, one of the smallest datasets you might use for training a face identification model is the VGGFace2 dataset with approximately 9,000 unique identities—far more diversity than our toy dataset provides.
 
 ## Conclusion
 
-Here we used a toy example of classifying 5 digits (digits 0-4) of the MNIST dataset to train and compare three different models: a standard softmax model, a normalized softmax model, and an ArcFace model. We examined how well clustered the embeddings are for each model both visually and by using the Dunn Index. We saw that the standard softmax leaves room for improvement in clustering quality. We then looked at how the normalized softmax improves the clustering quality by normalizing the embeddings and class centers before computing the logits, forcing the model to focus on minimizing the angle between the embeddings and class centers. Finally, we looked at how ArcFace improves the clustering quality even further by adding a margin to the angle for the correct class during training, which pulls samples away from the class boundaries and towards the class centers.
+In this post, we used a toy example of classifying 5 digits (digits 0–4) from the MNIST dataset to train and compare three different models: a standard softmax model, a normalized softmax model, and an ArcFace model. We examined how well clustered the embeddings were for each model, both visually and using the Dunn Index.
+
+We saw that the standard softmax leaves significant room for improvement in clustering quality. The normalized softmax improves clustering by normalizing the embeddings and class centers before computing the logits, forcing the model to focus on minimizing the angle between embeddings and class centers. ArcFace builds on this by adding an angular margin to the correct class during training, pulling samples farther from class boundaries and closer to their class centers.
+
+Although our example was limited to a small set of classes, these same techniques form the foundation of state-of-the-art systems for tasks like face recognition. By understanding and applying them, you can create embedding spaces that are more discriminative, more robust, and better suited to downstream tasks that rely on meaningful spatial relationships between embeddings.
