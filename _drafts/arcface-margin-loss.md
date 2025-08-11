@@ -353,38 +353,53 @@ So the model assigns essentially 100% probability to class "0" for this sample.
 Okay—now we’ve covered how to get from embeddings to a probability distribution. Next, we’ll look at why this isn’t good enough when we don’t know all the classes up front.
 
 
-## Trouble with Open Ended Classes
+## Trouble with Open-Ended Classes
 
-So when we have open ended classes, like we do in the case of face identification, we often need to compare two samples to know if they are of the same class. We might compare to pictures of a face to determine if they are of the same face or not. Since the classifier will only know of classes in the training data, we cannot typically rely on it. That means we must compare the embeddings in some way to determine this. If our embedding network maps members of the same class near each other in the embedding space, then we could compare the distances between the embeddings to see if they are of the same class or not. So when we train such a network with a softmax classifier, do we get such a capable embedding network?
+When we have open-ended classes, like in face identification, we often need to compare two samples to decide if they belong to the same class. For example, we might compare two face images to see if they show the same person.
 
-Returning to our example softmax model, here is how it maps our test data into the embedding space:
+A softmax classifier can only recognize classes it saw during training, so for new identities it's not reliable. Instead, we have to compare embeddings directly. If our embedding network maps members of the same class close together in embedding space, then we can decide "same class" or "different class" based on their distance.
+
+But if we train an embedding network with a softmax classifier, do we actually get embeddings that work well for this?
+
+Returning to our example softmax model, here's how it maps our test data into the embedding space:
 
 ![Embeddings for Softmax without Classifier Bias](softmax_no_classifier_bias.png)
 
-Here we see the embeddings of our 5 classes which have, loosely, clustered together. The grey lines represent the boundaries between the classes. Ideally, we'd like to see these cluster's spaced far apart from each other and for all members of a cluster to be packed in close together. In particuar, members of a given class should be closer together in the embedding space than to any member of any other class. So is that what has happened here? Consider these samples:
+The points form loose clusters by class, and the grey lines show the classifier's decision boundaries. Ideally, these clusters should be far apart from each other and thight within each class. That way, any two points from the same class are closer to each other than to any point from another class.
+
+But is that what we see here? Consider these samples:
 
 ![Sample of class 0 closer to sample of class 2](outlier_class_0_with_class_2.png)
 
-The above three samples were classified correctly by the classifier. Samples 174 and 204 are of class 0 and sample 887 is of class 2. However, sample 174 is closer to sample 887 than it is to sample 204, whether looking at euclidean or cosine distances. This means there isn't a distance threshold we could use that would tell us that 174 is the same class as 204, and that 174 is _not_ the same class as 887. So distances in the embedding space are not always reliable in determining if two samples belong to the same class. How reliable they are depends on how well separated our classes are and on how tightly packed the members of a class are. If we want to improve our model, we'll need some way to measure and compare models based on these properties, which brings us to the Dunn Index.
+All three are classified correctly: samples 174 and 204 belong to class 0, and sample 887 belongs to class 2. However, sample 174 is *closer* to sample 887 than 204—both in Euclidean and cosine distance.
 
+This means there's no single distance threshold that would let us correctly say "174 and 204 are the same class" while "174 and 887 are different classes." The reliability of distances in embedding space depends on both:
+
+* *Inter-class separation*: how far apart the clusters are
+* *Intra-class compactness*: how tight each cluster is
+
+To improve our model, we need a way to quantify these properties and compare them across models. This brings to the *Dunn Index*.
 
 ## Dunn Index
 
-When looking at the quality of clustering, we care about two things: how well separated are the clusters (inter-class distance), and how cohesive are the classes (intra-class distance). We want to maximize the inter-class distances and minimize the intra-class distances. The Dunn Index, from [A Fuzzy Relative of the ISODATA Process and Its Use in Detecting Compact Well-Separated Clusters (Dunn, J. C., 1973)](https://doi.org/10.1080/01969727308546046), is a metric for comparing these qualities. The metric has roughly the following form:
+When looking at the quality of clustering, we care about two things: how well separated the clusters are (inter-class distance) and how cohesive the classes are (intra-class distance). We want to maximize the inter-class distances and minimize the intra-class distances. The Dunn Index, from [A Fuzzy Relative of the ISODATA Process and Its Use in Detecting Compact Well-Separated Clusters (Dunn, J. C., 1973)](https://doi.org/10.1080/01969727308546046), is a metric for comparing these qualities. The metric has roughly the following form:
 
 $$
 DI = \frac{\text{min class distance}}{\text{max distance betweem members of the same class}}
 $$
 
-A higher value for the dunn index means the classes are well separated and cohesive, and a lower value means the classes are not well separated or cohesive. If we look at the above definition, there are two ways we can improve the Dunn Index: push the classes further apart which will give us a larger numerator, or pack the members of each class closer together which will give us a smaller denominator.
+A higher value for the Dunn Index means the classes are well separated and cohesive, and a lower value means the classes are not well separated or cohesive. If we look at the above definition, there are two ways we can improve the Dunn Index:
 
-One of the downsides of the dunn index is that because it compares a minimum with a maximum, it is sensitive to outliers. As such, there are a number of variations of the Dunn Index that try to mitigate this. The one we will use here involves dropping all members of a class that are beyond the 95th percentile of the distances from the centroid of that class. This ensures that a single errant embedding does not torpedo the Dunn Index. This is a simple way to make the Dunn Index more robust to outliers, and it works well in practice. The code for this is available in the source code repository.
+1. Push the classes further apart, increasing the numerator.
+2. Pack the members of each class closer together, decreasing the denominator.
 
-If we compute the Dunn Index for our current softmax model, we get a value of 5.31. Now let's look at how we can improve the model.
+One downside of the Dunn Index is that because it compares a minimum with a maximum, it is sensitive to outliers. As such, there are a number of variations that try to mitigate this. The one we will use here involves dropping all members of a class that are beyond the 95th percentile of the distances from the centroid of that class. This ensures that a single errant embedding does not torpedo the Dunn Index. It’s a simple way to make the Dunn Index more robust to outliers, and it works well in practice. The code for this is available in the source code repository.
+
+If we compute the Dunn Index for our current softmax model, we get a value of 5.31. Now let’s look at how we can improve the model.
 
 ## Normalized Softmax
 
-You'll recall that we have the following calculation for the logits:
+Recall that we calculate the logits as:
 
 $$
 \mathbf{z} = \begin{bmatrix}
@@ -393,19 +408,38 @@ $$
 \end{bmatrix}
 $$
 
-During training, the model tries to maximize the dot product of the embedding with the class center for the correct class, while minimizing the dot products with all other classes. How can the model increase the dot product? Let's take another loot at the definition of the dot product:
+During training, the model tries to maximize the dot product of the embedding with the class center for the correct class, while minimizing the dot products with all other classes. The dot product is defined as:
 
 $$
-\mathbf{u} \cdot \mathbf{v} = |\mathbf{u}||\mathbf{v}| \cos \theta
+\mathbf{u} \cdot \mathbf{v} = \|\mathbf{u}\|\|\mathbf{v}\| \cos \theta
 $$
 
-We can increase the dot product by increasing the magnitudes of either $u$ or $v$, or by decreasing the angle $\theta$ between them. If we look at the embedding space, we can see that increasing the magnitudes of the embeddings is often how things go:
+This means the model can increase the dot product in two ways:
+1. Increasing the magnitudes of $\|u\| or \|v\|$
+2. Decreasing the angle $\theta$ between them
+
+If we look at the embedding space for the standard softmax model from earlier, we see that the model turns that first "knob" quite a bit:
 
 ![Embeddings for Softmax with No Classifier Bias](softmax_no_classifier_bias.png)
 
-Notice how the embedding for each class stretch out from the origin. Increasing the magnitudes in this way makes the euclidean distances between members of the same class larger and more varied, which is not helpful. And since the model has this knob of increasing the magnitudes of the embeddings, it will be less prone to minimizing the angle between the embeddings and the class centers. This means that not only do we get subpar euclidean distances, but the also mediocre cosine distances too.
+Notice how the points for each class radiate outward from the origin. This magnitude inflation has two downsides:
 
-In [NormFace: L₂ Hypersphere Embedding for Face Verification (Wang et al, 2017)](https://arxiv.org/abs/1704.06369) they address the problem by normalizing the embeddings and the class centers before computing the dot product. This means the magnitudes of the embeddings and class centers are always 1, so the dot product is simply the cosine of the angle between them. Now the logits are computed as follows:
+1. Euclidean distances between members of the same class become larger and more varied, making distance-based comparison less reliable.
+2. Because the model can improve logits just by increasing magnitude, it has less incentive to minimize the angle between embeddings and class centers—so cosine distances suffer as well.
+
+In [NormFace: L₂ Hypersphere Embedding for Face Verification (Wang et al, 2017)](https://arxiv.org/abs/1704.06369), the authors address this by normalizing both the embeddings and the class centers before computing the dot product. This forces:
+
+$$
+\|\mathbf{x}_i\| = 1 \quadd  \text{and} \quadd \|\mathbf{w}_j\| = 1
+$$
+
+So the dot product is simply:
+
+$$
+\mathbf{x}_i \cdot \mathbf{w}_j = \cos(\theta)
+$$
+
+The logits then become:
 
 $$
 \mathbf{z} = \begin{bmatrix}
@@ -414,9 +448,9 @@ $$
 \end{bmatrix}
 $$
 
-By depriving the model of the ability to increase magnitudes to improve the dot product, we force it to focus on minimizing the angle between the embeddings and the class centers.
+By removing the magnitude "shortcut," the model must minimize angles to improve classification—which directly benefits cosine similarity.
 
-To effect this change, we need to modify our embedding network's `forward(...)` method to normalize the embeddings before passing them to the classifier:
+To normalize the embeddings, we modify our network's `forward(...)` method:
 
 ```python
 class EmbeddingNetwork(nn.Module):
@@ -435,7 +469,7 @@ class EmbeddingNetwork(nn.Module):
         return embedding
 ```
 
-Then we create a new classifier that normalizes the class centers before computing the logits:
+We also create a classifier that normalizes the class centers before computing the logits:
 
 ```python
 class CosineClassifier(nn.Linear):
@@ -454,18 +488,22 @@ class CosineClassifier(nn.Linear):
         x = F.linear(z, F.normalize(self.weight, dim=1), self.bias)
 ```
 
-After training the model, we get the following embeddings for the test data:
+After training the normalized softmax model, the test set embeddings look like this:
 
 ![Embeddings for Normalized Softmax](normalized_softmax.png)
 
-If we revisit the samples from earlier where sample of digit 0 was closer to sample of digit 2 than it was to one of the other samples of digit 0:
+Revisting the earlier problem—where sample 174 (class 0) was closer to a sample from digit 2 than to another sample from digit 0:
 
 ![Sample of class 0 closer to sample of class 2](outlier_class_0_with_class_2.png)
 
-With this new model, we find that sample 174 now has a cosine distance of 2.6149e-4 with sample 204 and a cosine distance of 0.32 with example 887. This means the previous problem, for these samples at least, has been resolved. The model is now able to reliably embedding sample 174 near sample 204 and away from sample 887.
+We now find:
 
-Calculating the Dunn Index for this model, we get 29.11, a clear improvement over the previous model. But we can do even better.
+* Cosine distance between 174 and 204 (both digit 0): $2.61 \times 10^{-4}$
+* Cosine distance between 174 and 887 (digit 2): $0.32$
 
+At least for this particular case, the issue is gone: sample 174 is now embedded close to its own class and far from the other.
+
+Calculating the Dunn Index for this normalized softmax model, we get 29.11, a clear improvement over the previous model. But we can do even better.
 
 # ArcFace Additive Margin Loss
 
