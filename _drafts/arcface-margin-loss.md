@@ -1,8 +1,11 @@
 ---
 layout: post
-title: ArcFace Margin Loss
+title: "From Softmax to ArcFace: Building Better Embeddings with Additive Angular Margins"
 math: true
 media_subpath: /assets/img/posts/arcface-margin-loss
+image:
+  path: arcface_post_image.png
+  alt: ArcFace Margin Loss
 ---
 
 ## Introduction
@@ -285,7 +288,7 @@ With this geometric view in mind, we can now zoom in on a single example to see 
 
 Plotting the embedding and class centers:
  
-![Plot digit 0 with class centers](digit_0_sample_plotted.png)
+![Embedding of digit 0 sample with class centers](digit_0_sample_plotted.png)
  
 The class centers are clustered around the origin with small, similar magnitudes. $\mathbf{w}_1$ and $\mathbf{w}_4$ point roughly opposite our sample, matching their large negative dot products of -13.03 and -10.52 respectively. $\mathbf{w}_0$, $\mathbf{w}_2$, and $\mathbf{w}_3$ have angles under 90° with our sample, so their dot products are positive. Class 0's vector, $\mathbf{w}_0$, is most aligned with the sample, giving the largest dot product: 18.30.
 
@@ -421,7 +424,7 @@ This means the model can increase the dot product in two ways:
 
 If we look at the embedding space for the standard softmax model from earlier, we see that the model turns that first ‘knob’, increasing the magnitude of the embeddings, quite a bit:
 
-![Embeddings for Softmax with No Classifier Bias](softmax_no_classifier_bias.png)
+![Embeddings for Softmax with No Classifier Bias](softmax_no_classifier_bias_dunn_index.png)
 
 Notice how the points for each class radiate outward from the origin. This magnitude inflation has two downsides:
 
