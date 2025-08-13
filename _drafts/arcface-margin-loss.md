@@ -7,11 +7,11 @@ media_subpath: /assets/img/posts/arcface-margin-loss
 
 ## Introduction
 
-Imagine trying to build a face identification system that can recognize any face on Earth—not just some fixed set of faces. New faces appear every day, and there's no way to include all of them during training. Traditional classification methods start to fall apart in this kind of *open-ended* problem.
+Imagine trying to build a face identification system that can recognize any face on Earth, not just some fixed set of faces. New faces appear every day, and there's no way to include all of them during training. Traditional classification methods start to fall apart in this kind of *open-ended* problem.
 
 One of the most common such methods is *softmax*. It works brilliantly when the set of classes is fixed, but struggles when new, unseen classes appear. In this post, we'll explore how softmax works, why it falters in open-ended scenarios, and how *ArcFace*, [ArcFace: Additive Angular Margin Loss for Deep Face Recognition (Deng et al., 2022)](https://arxiv.org/abs/1801.07698), addresses the problem with an *additive angular margin loss* that forces better separation between classes.
 
-To keep things easy to visualize, we'll use the first five classes of [MNIST](https://en.wikipedia.org/wiki/MNIST_database), a dataset of handwritten digits. MNIST doesn't require ArcFace—the classes are fixed at 10—but it's a convenient playground for illustrating the concepts. We'll walk through code snippets, mathematical details, and visualizations from trained models. The full source code will be available [here](some_url).
+To keep things easy to visualize, we'll use the first five classes of [MNIST](https://en.wikipedia.org/wiki/MNIST_database), a dataset of handwritten digits. MNIST doesn't require ArcFace, as the classes are fixed at 10, but it's a convenient playground for illustrating the concepts. We'll walk through code snippets, mathematical details, and visualizations from trained models. The full source code will be available [here](some_url).
 
 
 ## A Softmax Model for MNIST
@@ -68,7 +68,7 @@ class SimpleEmbeddingNetwork(nn.Module):
         return embedding
 ```
 
-A standard softmax classifier first produces logits with a linear layer. The softmax operation is then applied—typically within the loss function during training—to convert these logits into a probability distribution:
+A standard softmax classifier first produces logits with a linear layer. The softmax operation is then applied, typically within the loss function during training, to convert these logits into a probability distribution:
 
 ```python
 class LinearClassifier(nn.Module):
@@ -188,12 +188,11 @@ Below (left) is a scatter plot of all embeddings from the test set, colored by t
 
 ![Softmax embeddings with class centers](softmax_embeddings_zoomed.png)
 
-Notice how, even though the embeddings themselves are far from the origin, the class centers occupy a very small region. This scale difference is one reason we’ll later discuss normalization—to bring embeddings and class centers onto a comparable scale.
+Notice how, even though the embeddings themselves are far from the origin, the class centers occupy a very small region. This scale difference is one reason we’ll later discuss normalization---to bring embeddings and class centers onto a comparable scale.
 
 ### Decision Boundaries
 
-The class center vectors also define the decision boundaries between classes. A point lies on the decision boundary between two classes when the model is equally confident in both—meaning their logits are exactly the same.
-In other words, the dot product of the embedding with each class center produces the same score. For any two classes $i$ and $j$, the decision boundary is the set of points where:
+The class center vectors also define the decision boundaries between classes. A point lies on the decision boundary between two classes when the model is equally confident in both: meaning their logits are exactly the same. In other words, the dot product of the embedding with each class center produces the same score. For any two classes $i$ and $j$, the decision boundary is the set of points where:
 
 $$
 \mathbf{x} \cdot \mathbf{w}_i = \mathbf{x} \cdot \mathbf{w}_j
@@ -212,7 +211,7 @@ In two dimensions, these hyperplanes are simply straight lines through the origi
 ![Decision boundaries for classes 0 and 3 and 0 and 2](softmax_boundaries_0_3_0_2.png)
 
 In each plot, the line marks where the logits for the two classes are equal.
-Points on one side give a higher logit to one class; points on the other side give a higher logit to the other. In a multi-class setting, the final predicted class is whichever has the largest logit among all classes — so a point might fall on one side of this boundary but still be predicted as some completely different class whose logit is even higher.
+Points on one side give a higher logit to one class; points on the other side give a higher logit to the other. In a multi-class setting, the final predicted class is whichever has the largest logit among all classes, so a point might fall on one side of this boundary but still be predicted as some completely different class whose logit is even higher.
 
 ### A Single Example
 
@@ -300,7 +299,7 @@ $$
 \end{bmatrix}
 $$
 
-It's clear that class 0 has the largest logit and class 1 the smallest. But logits aren't probabilities—they can be negative, and they don't sum to 1.
+It's clear that class 0 has the largest logit and class 1 the smallest. But logits aren't probabilities; they can be negative, and they don't sum to 1.
 
 What if we transform each logit into a positive number that preserves their ordering? One way to do that is to raise a positive base to each logit. For illustration, let's use 10 as the base:
 
@@ -352,7 +351,7 @@ So the model assigns essentially 100% probability to class "0" for this sample.
 
 (In real code, we subtract $max(z)$ from all logits before exponentiating to avoid overflow issues, but the math is the same.)
 
-Okay—now we’ve covered how to get from embeddings to a probability distribution. Next, we’ll look at why this isn’t good enough when we don’t know all the classes up front.
+Okay, now we’ve covered how to get from embeddings to a probability distribution. Next, we’ll look at why this isn’t good enough when we don’t know all the classes up front.
 
 
 ## Trouble with Open-Ended Classes
@@ -373,7 +372,7 @@ But is that what we see here? Consider these samples:
 
 ![Sample of class 0 closer to sample of class 2](outlier_class_0_with_class_2.png)
 
-All three are classified correctly: samples 174 and 204 belong to class 0, and sample 887 belongs to class 2. However, sample 174 is *closer* to sample 887 than 204—both in Euclidean and cosine distance.
+All three are classified correctly: samples 174 and 204 belong to class 0, and sample 887 belongs to class 2. However, sample 174 is *closer* to sample 887 than 204, both in Euclidean and cosine distance.
 
 This means there's no single distance threshold that would let us correctly say "174 and 204 are the same class" while "174 and 887 are different classes." The reliability of distances in embedding space depends on both:
 
@@ -420,14 +419,14 @@ This means the model can increase the dot product in two ways:
 1. Increasing the magnitudes of $\lVert \mathbf{u} \rVert$ or $\lVert \mathbf{v} \rVert$
 2. Decreasing the angle $\theta$ between them
 
-If we look at the embedding space for the standard softmax model from earlier, we see that the model turns that first ‘knob’—increasing the magnitude of the embeddings—quite a bit:
+If we look at the embedding space for the standard softmax model from earlier, we see that the model turns that first ‘knob’, increasing the magnitude of the embeddings, quite a bit:
 
 ![Embeddings for Softmax with No Classifier Bias](softmax_no_classifier_bias.png)
 
 Notice how the points for each class radiate outward from the origin. This magnitude inflation has two downsides:
 
 1. Euclidean distances between members of the same class become larger and more varied, making distance-based comparison less reliable.
-2. Because the model can improve logits just by increasing magnitude, it has less incentive to minimize the angle between embeddings and class centers—so cosine distances suffer as well.
+2. Because the model can improve logits just by increasing magnitude, it has less incentive to minimize the angle between embeddings and class centers, so cosine distances suffer as well.
 
 In [NormFace: L₂ Hypersphere Embedding for Face Verification (Wang et al, 2017)](https://arxiv.org/abs/1704.06369), the authors address this by normalizing both the embeddings and the class centers before computing the dot product. This forces:
 
@@ -450,7 +449,7 @@ $$
 \end{bmatrix}
 $$
 
-By removing the magnitude "shortcut," the model must minimize angles to improve classification—which directly benefits cosine distances.
+By removing the magnitude "shortcut," the model must minimize angles to improve classification, which directly benefits cosine distances.
 
 To normalize the embeddings, we modify our network's `forward(...)` method:
 
@@ -494,7 +493,7 @@ After training the normalized softmax model, the test set embeddings look like t
 
 ![Embeddings for Normalized Softmax](normalized_softmax.png)
 
-Revisiting the earlier problem—where sample 174 (class 0) was closer to a sample from digit 2 than to another sample from digit 0:
+Revisiting the earlier problem, where sample 174 (class 0) was closer to a sample from digit 2 than to another sample from digit 0:
 
 ![Sample of class 0 closer to sample of class 2](outlier_class_0_with_class_2.png)
 
@@ -781,7 +780,7 @@ $$
 
 Now we can have probabilities effectively ranging from 0% to 100%, better enabling the model to fit the data. For the toy example we have been using, it really wasn't necessary to use a scaling factor, but in practice it would be. The ArcFace and NormFace papers take different approaches to how the scaling factor is specified. NormFace adds a new scaling factor parameter which is learned during training while ArcFace uses a hyperparameter.
 
-Another thing to address is that when we started I explained that we need embeddings with meaningful spatial relationships so that we can reliably handle classes not in the training data. However, so far, I've only shown examples for classes the model has seen during training. There are really two things we need for this to work: the embeddings need to be well clustered, and the embedding network must be able to generalize to unseen classes. The first part is what we have been focusing on here. Unfortunately, to get an embedding network that can generalize to unseen classes would take a much greater diversity of classes. Five classes representing digits is simply not enough for the embedding network to abstract the qualities that make a symbol distinct from any other symbol. For context, one of the smaller large-scale datasets you might use for training a face identification model is the [VGGFace2 dataset (Cao et al., 2018)](https://www.robots.ox.ac.uk/~vgg/data/vgg_face2/) with approximately 9,000 unique identities—far more diversity than our toy dataset provides.
+Another thing to address is that when we started I explained that we need embeddings with meaningful spatial relationships so that we can reliably handle classes not in the training data. However, so far, I've only shown examples for classes the model has seen during training. There are really two things we need for this to work: the embeddings need to be well clustered, and the embedding network must be able to generalize to unseen classes. The first part is what we have been focusing on here. Unfortunately, to get an embedding network that can generalize to unseen classes would take a much greater diversity of classes. Five classes representing digits is simply not enough for the embedding network to abstract the qualities that make a symbol distinct from any other symbol. For context, one of the smaller large-scale datasets you might use for training a face identification model is the [VGGFace2 dataset (Cao et al., 2018)](https://www.robots.ox.ac.uk/~vgg/data/vgg_face2/) with approximately 9,000 unique identities, far more diversity than our toy dataset provides.
 
 ## Conclusion
 
