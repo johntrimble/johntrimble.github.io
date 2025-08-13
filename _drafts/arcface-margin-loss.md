@@ -9,7 +9,7 @@ media_subpath: /assets/img/posts/arcface-margin-loss
 
 Imagine trying to build a face identification system that can recognize any face on Earth—not just some fixed set of faces. New faces appear every day, and there's no way to include all of them during training. Traditional classification methods start to fall apart in this kind of *open-ended* problem.
 
-One of the most common such methods is *softmax*. It works brilliantly when the set of classes is fixed, but struggles when new, unseen classes appear. In this post, we'll explore how softmax works, why it falters in open-ended scenarios, and how *ArcFace* addresses the problem with an *additive angular margin* that forces better separation between classes.
+One of the most common such methods is *softmax*. It works brilliantly when the set of classes is fixed, but struggles when new, unseen classes appear. In this post, we'll explore how softmax works, why it falters in open-ended scenarios, and how *ArcFace*, [ArcFace: Additive Angular Margin Loss for Deep Face Recognition (Deng et al., 2022)](https://arxiv.org/abs/1801.07698), addresses the problem with an *additive angular margin loss* that forces better separation between classes.
 
 To keep things easy to visualize, we'll use the first five classes of [MNIST](https://en.wikipedia.org/wiki/MNIST_database), a dataset of handwritten digits. MNIST doesn't require ArcFace—the classes are fixed at 10—but it's a convenient playground for illustrating the concepts. We'll walk through code snippets, mathematical details, and visualizations from trained models. The full source code will be available [here](some_url).
 
@@ -68,7 +68,7 @@ class SimpleEmbeddingNetwork(nn.Module):
         return embedding
 ```
 
-A standard softmax classifier first produces logits with a linear layer and then applies softmax to convert them into a probability distribution:
+A standard softmax classifier first produces logits with a linear layer. The softmax operation is then applied—typically within the loss function during training—to convert these logits into a probability distribution:
 
 ```python
 class LinearClassifier(nn.Module):
@@ -102,7 +102,7 @@ $$
 \end{bmatrix}
 $$
 
-Each column of $\mathbf{W}^\top$ (or each row of $\mathbf{W}$) is a vector $\mathbf{W}_i$ representing the *class center* of class $i$:
+Each column of $\mathbf{W}^\top$ (or each row of $\mathbf{W}$) is a vector $\mathbf{w}_i$ representing the *class center* of class $i$:
 
 $$
 \begin{align*}
@@ -192,7 +192,8 @@ Notice how, even though the embeddings themselves are far from the origin, the c
 
 ### Decision Boundaries
 
-The class center vectors also define the decision boundaries between classes. For any two classes $i$ and $j$, the decision boundary is the set of points where:
+The class center vectors also define the decision boundaries between classes. A point lies on the decision boundary between two classes when the model is equally confident in both—meaning their logits are exactly the same.
+In other words, the dot product of the embedding with each class center produces the same score. For any two classes $i$ and $j$, the decision boundary is the set of points where:
 
 $$
 \mathbf{x} \cdot \mathbf{w}_i = \mathbf{x} \cdot \mathbf{w}_j
@@ -210,7 +211,8 @@ In two dimensions, these hyperplanes are simply straight lines through the origi
 
 ![Decision boundaries for classes 0 and 3 and 0 and 2](softmax_boundaries_0_3_0_2.png)
 
-In each plot, the line marks where the logits for the two classes are equal. Points on one side give a higher logit to one class; points on the other side give a higher logit to the other. In a multi-class setting, the final predicted class is whichever class has the highest logit overall, so a point might fall on one side of this line but still be predicted as a different class entirely.
+In each plot, the line marks where the logits for the two classes are equal.
+Points on one side give a higher logit to one class; points on the other side give a higher logit to the other. In a multi-class setting, the final predicted class is whichever has the largest logit among all classes — so a point might fall on one side of this boundary but still be predicted as some completely different class whose logit is even higher.
 
 ### A Single Example
 
@@ -274,9 +276,9 @@ $$
 \mathbf{v} \cdot \mathbf{u} = \|\mathbf{u}\|\|\mathbf{v}\|\cos(\theta)
 $$
 
-* $\theta$ = 0° \rightarrow dot product is the product of magnitudes (max positive)
-* $\theta$ = 90° \rightarrow dot product is 0 since $\cos(90°) = 0$
-* $\theta$ = 180° \rightarrow dot product is the product of magnitudes times -1 since $\cos(180°) = -1$ (max negative)
+* $\theta$ = 0°, dot product is the product of magnitudes (max positive)
+* $\theta$ = 90°, dot product is 0 since $\cos(90°) = 0$
+* $\theta$ = 180°, dot product is the product of magnitudes times -1 since $\cos(180°) = -1$ (max negative)
 
 <!--
 With this geometric view in mind, we can now zoom in on a single example to see exactly how the dot product determines which side of these boundaries an embedding falls on.
@@ -290,7 +292,7 @@ The class centers are clustered around the origin with small, similar magnitudes
 
 ### Softmax
 
-Now that we've looked at embeddings and their relationship to the class centers, now we need to figure out how to turn our logits into a probability distribution. If we look at the logits from our previous example:
+Now that we've looked at embeddings and their relationship to the class centers, we need to figure out how to turn our logits into a probability distribution. If we look at the logits from our previous example:
 
 $$
 \mathbf{z} = \begin{bmatrix}
@@ -365,7 +367,7 @@ Returning to our example softmax model, here's how it maps our test data into th
 
 ![Embeddings for Softmax without Classifier Bias](softmax_no_classifier_bias.png)
 
-The points form loose clusters by class, and the grey lines show the classifier's decision boundaries. Ideally, these clusters should be far apart from each other and thight within each class. That way, any two points from the same class are closer to each other than to any point from another class.
+The points form loose clusters by class, and the grey lines show the classifier's decision boundaries. Ideally, these clusters should be far apart from each other and tightly packed within each class. That way, any two points from the same class are closer to each other than to any point from another class.
 
 But is that what we see here? Consider these samples:
 
@@ -378,14 +380,14 @@ This means there's no single distance threshold that would let us correctly say 
 * *Inter-class separation*: how far apart the clusters are
 * *Intra-class compactness*: how tight each cluster is
 
-To improve our model, we need a way to quantify these properties and compare them across models. This brings to the *Dunn Index*.
+To improve our model, we need a way to quantify these properties and compare them across models. This brings us to the *Dunn Index*.
 
 ## Dunn Index
 
-When looking at the quality of clustering, we care about two things: how well separated the clusters are (inter-class distance) and how cohesive the classes are (intra-class distance). We want to maximize the inter-class distances and minimize the intra-class distances. The Dunn Index, from [A Fuzzy Relative of the ISODATA Process and Its Use in Detecting Compact Well-Separated Clusters (Dunn, J. C., 1973)](https://doi.org/10.1080/01969727308546046), is a metric for comparing these qualities. The metric has roughly the following form:
+When looking at the quality of clustering, we care about two things: how well separated the clusters are (inter-class distance) and how cohesive the classes are (intra-class distance). We want to maximize the inter-class distances and minimize the intra-class distances. The Dunn Index, [A Fuzzy Relative of the ISODATA Process and Its Use in Detecting Compact Well-Separated Clusters (Dunn, J. C., 1973)](https://doi.org/10.1080/01969727308546046), is a metric for comparing these qualities. The metric has roughly the following form:
 
 $$
-DI = \frac{\text{min class distance}}{\text{max distance betweem members of the same class}}
+DI = \frac{\text{min class distance}}{\text{max distance between members of the same class}}
 $$
 
 A higher value for the Dunn Index means the classes are well separated and cohesive, and a lower value means the classes are not well separated or cohesive. If we look at the above definition, there are two ways we can improve the Dunn Index:
@@ -393,7 +395,7 @@ A higher value for the Dunn Index means the classes are well separated and cohes
 1. Push the classes further apart, increasing the numerator.
 2. Pack the members of each class closer together, decreasing the denominator.
 
-One downside of the Dunn Index is that because it compares a minimum with a maximum, it is sensitive to outliers. As such, there are a number of variations that try to mitigate this. The one we will use here involves dropping all members of a class that are beyond the 95th percentile of the distances from the centroid of that class. This ensures that a single errant embedding does not torpedo the Dunn Index. It’s a simple way to make the Dunn Index more robust to outliers, and it works well in practice. The code for this is available in the source code repository.
+One downside of the Dunn Index is that because it compares a minimum with a maximum, it is sensitive to outliers. As such, there are a number of variations that try to mitigate this. The one we will use here involves dropping all members of a class that are beyond the 95th percentile of the distances from the centroid of that class. This ensures that a single errant embedding does not torpedo the metric. It’s a simple way to make the Dunn Index more robust to outliers, and it works well in practice. The code for this is available in the source code repository.
 
 If we compute the Dunn Index for our current softmax model, we get a value of 5.31. Now let’s look at how we can improve the model.
 
@@ -415,10 +417,10 @@ $$
 $$
 
 This means the model can increase the dot product in two ways:
-1. Increasing the magnitudes of $\|u\| or \|v\|$
+1. Increasing the magnitudes of $\lVert \mathbf{u} \rVert$ or $\lVert \mathbf{v} \rVert$
 2. Decreasing the angle $\theta$ between them
 
-If we look at the embedding space for the standard softmax model from earlier, we see that the model turns that first "knob" quite a bit:
+If we look at the embedding space for the standard softmax model from earlier, we see that the model turns that first ‘knob’—increasing the magnitude of the embeddings—quite a bit:
 
 ![Embeddings for Softmax with No Classifier Bias](softmax_no_classifier_bias.png)
 
@@ -448,7 +450,7 @@ $$
 \end{bmatrix}
 $$
 
-By removing the magnitude "shortcut," the model must minimize angles to improve classification—which directly benefits cosine similarity.
+By removing the magnitude "shortcut," the model must minimize angles to improve classification—which directly benefits cosine distances.
 
 To normalize the embeddings, we modify our network's `forward(...)` method:
 
@@ -492,7 +494,7 @@ After training the normalized softmax model, the test set embeddings look like t
 
 ![Embeddings for Normalized Softmax](normalized_softmax.png)
 
-Revisting the earlier problem—where sample 174 (class 0) was closer to a sample from digit 2 than to another sample from digit 0:
+Revisiting the earlier problem—where sample 174 (class 0) was closer to a sample from digit 2 than to another sample from digit 0:
 
 ![Sample of class 0 closer to sample of class 2](outlier_class_0_with_class_2.png)
 
@@ -671,9 +673,9 @@ z_0 & = \cos(\theta_{\mathbf{x}_0,\mathbf{w}_0} + m) \\
 \end{align*}
 $$
 
-Before we get to the code, there is one more pesky little problem. When we add this margin to a logit, the goal is to make the logit smaller so that it is harder to classify the sample correctly. However, there is an edge case where adding the margin actually increases the logit. Suppose by some twist of fate $$\theta_{\mathbf{x}_0,\mathbf{w}_0}$$ is actually $$\pi$$ radians. In this scenario, the $$\cos(\theta_{\mathbf{x}_0,\mathbf{w}_0})$$ would be -1, the smallest possible value for the cosine of an angle. If we add a margin of 0.5 radians, then we would have $$\cos(\theta_{\mathbf{x}_0,\mathbf{w}_0} + m) = \cos(\pi + 0.5) \approx -0.88$$. This is actually larger than -1, which is not what we want. This situation can occur whenever $$\theta_{\mathbf{x}_0,\mathbf{w}_0} \in (\pi - m, \pi]$$, which is quivalent to $$\cos(\theta_{\mathbf{x}_0,\mathbf{w}_0}) < \cos(\pi - m)$$.
+Before we get to the code, there is one more pesky little problem. When we add this margin to a logit, the goal is to make the logit smaller so that it is harder to classify the sample correctly. However, there is an edge case where adding the margin actually increases the logit. Suppose by some twist of fate $$\theta_{\mathbf{x}_0,\mathbf{w}_0}$$ is actually $$\pi$$ radians. In this scenario, the $$\cos(\theta_{\mathbf{x}_0,\mathbf{w}_0})$$ would be -1, the smallest possible value for the cosine of an angle. If we add a margin of 0.5 radians, then we would have $$\cos(\theta_{\mathbf{x}_0,\mathbf{w}_0} + m) = \cos(\pi + 0.5) \approx -0.88$$. This is actually larger than -1, which is not what we want. This situation can occur whenever $$\theta_{\mathbf{x}_0,\mathbf{w}_0} \in (\pi - m, \pi]$$, which is equivalent to $$\cos(\theta_{\mathbf{x}_0,\mathbf{w}_0}) < \cos(\pi - m)$$.
 
-So how do we fix this problem? Well, the paper doesn't seem to address this case. If we think about the scenario when this happens, it is when the embedding is pointing in the opposite direction of the class center. If the embedding and the class center are pointing in opposite directions, then the logit for the correct class would already be quite small. Sure adding the margin might, unintentionally, increase the size of the logit instead of decreasing it, but it's a small mercy for a terrible logit. My solution to the problem is to just pretend it doesn't exist, and it seems to work well enough.
+So how do we fix this problem? Well, the paper doesn't seem to address this case. If we think about the scenario when this happens, it is when the embedding is pointing in the opposite direction of the class center. If the embedding and the class center are pointing in opposite directions, then the logit for the correct class would already be quite small. Sure adding the margin might, unintentionally, increase the size of the logit instead of decreasing it, but it's a small mercy for a very small logit. My solution to the problem is to just pretend it doesn't exist, and it seems to work well enough in practice.
 
 With all of that out of the way, here is the code for ArcFace Additive Margin Loss:
 
@@ -740,7 +742,7 @@ $$
 \end{bmatrix}
 $$
 
-For class 0, we have the highest possible logit under normalized softmax: 1.0. This is because largest value cosine function can take is 1.0. For all the other classes, we have the lowest possible logit under normalized softmax: -1.0. If we apply the softmax function to these logits, we get:
+For class 0, we have the highest possible logit under normalized softmax: 1.0. This is because the largest value cosine function can take is 1.0. For all the other classes, we have the lowest possible logit under normalized softmax: -1.0. If we apply the softmax function to these logits, we get:
 
 $$
 \begin{align*}
@@ -777,9 +779,9 @@ $$
 \end{align*}
 $$
 
-Now we can have probabilities effectively ranging from 0% to 100%. This allows the model to overcome the high bias problem and better fit the training data. For the toy example we have been using, it really wasn't necessary to use a scaling factor, but in practice it would be. The ArcFace and NormFace papers take different approaches to how the scaling factor is specified. NormFace adds a new scaling factor parameter which is learned during training, while ArcFace uses a hyperparameter.
+Now we can have probabilities effectively ranging from 0% to 100%, better enabling the model to fit the data. For the toy example we have been using, it really wasn't necessary to use a scaling factor, but in practice it would be. The ArcFace and NormFace papers take different approaches to how the scaling factor is specified. NormFace adds a new scaling factor parameter which is learned during training while ArcFace uses a hyperparameter.
 
-Another thing to address is that when we started I explained that we need embeddings with meaningful spatial relationships so that we can reliably handle classes not in the training data. However, so far, I've only shown examples for classes the model has seen during training. There are really two things we need for this to work: the embeddings need to be well clustered, and the embedding network must be able to generalize to unseen classes. The first part is what we have been focusing on here. Unfortunately, to get an embedding network that can generalize to unseen classes would take a much greater diversity of classes. Five classes representing digits is simply not enough for the embedding network to abstract the qualities that make a symbol distinct from any other symbol. For context, one of the smallest datasets you might use for training a face identification model is the VGGFace2 dataset with approximately 9,000 unique identities—far more diversity than our toy dataset provides.
+Another thing to address is that when we started I explained that we need embeddings with meaningful spatial relationships so that we can reliably handle classes not in the training data. However, so far, I've only shown examples for classes the model has seen during training. There are really two things we need for this to work: the embeddings need to be well clustered, and the embedding network must be able to generalize to unseen classes. The first part is what we have been focusing on here. Unfortunately, to get an embedding network that can generalize to unseen classes would take a much greater diversity of classes. Five classes representing digits is simply not enough for the embedding network to abstract the qualities that make a symbol distinct from any other symbol. For context, one of the smaller large-scale datasets you might use for training a face identification model is the [VGGFace2 dataset (Cao et al., 2018)](https://www.robots.ox.ac.uk/~vgg/data/vgg_face2/) with approximately 9,000 unique identities—far more diversity than our toy dataset provides.
 
 ## Conclusion
 
