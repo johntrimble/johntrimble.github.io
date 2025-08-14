@@ -14,7 +14,7 @@ Imagine trying to build a face identification system that can recognize any face
 
 One of the most common such methods is *softmax*. It works brilliantly when the set of classes is fixed, but struggles when new, unseen classes appear. In this post, we'll explore how softmax works, why it falters in open-ended scenarios, and how *ArcFace*, [ArcFace: Additive Angular Margin Loss for Deep Face Recognition (Deng et al., 2022)](https://arxiv.org/abs/1801.07698), addresses the problem with an *additive angular margin loss* that forces better separation between classes.
 
-To keep things easy to visualize, we'll use the first five classes of [MNIST](https://en.wikipedia.org/wiki/MNIST_database), a dataset of handwritten digits. MNIST doesn't require ArcFace, as the classes are fixed at 10, but it's a convenient playground for illustrating the concepts. We'll walk through code snippets, mathematical details, and visualizations from trained models. The full source code will be available [here](some_url).
+To keep things easy to visualize, we'll use the first five classes of [MNIST](https://en.wikipedia.org/wiki/MNIST_database), a dataset of handwritten digits. MNIST doesn't require ArcFace, as the classes are fixed at 10, but it's a convenient playground for illustrating the concepts. We'll walk through code snippets, mathematical details, and visualizations from trained models. The full source code will be available [here](https://github.com/johntrimble/softmax-to-arcface).
 
 
 ## A Softmax Model for MNIST
@@ -408,10 +408,10 @@ $$
 \end{bmatrix}
 $$
 
-During training, the model tries to maximize the dot product of the embedding with the class center for the correct class, while minimizing the dot products with all other classes. The dot product is defined as:
+During training, the model tries to maximize the dot product of the embeddings with the class centers for the correct class, while minimizing the dot products with all other classes. The dot product is defined as:
 
 $$
-\mathbf{u} \cdot \mathbf{v} = \|\mathbf{u}\|\|\mathbf{v}\| \cos \theta
+\mathbf{u} \cdot \mathbf{v} = \|\mathbf{u}\|\|\mathbf{v}\| \cos (\theta)
 $$
 
 This means the model can increase the dot product in two ways:
@@ -476,16 +476,10 @@ class CosineClassifier(nn.Linear):
     def __init__(self, embed_dim, num_classes, bias=False):
         super().__init__(embed_dim, num_classes, bias=bias)
 
-    def reset_parameters(self):
-        super().reset_parameters()
-        # Initialize weights using Xavier uniform initialization
-        nn.init.xavier_uniform_(self.weight)
-        if self.bias is not None:
-            nn.init.constant_(self.bias, 0.0)
-
     def forward(self, z):
         # Compute cosine similarity by using normalized weight vectors
         x = F.linear(z, F.normalize(self.weight, dim=1), self.bias)
+        return x
 ```
 
 After training the normalized softmax model, the test set embeddings look like this:
@@ -505,7 +499,7 @@ At least for this particular case, the issue is gone: sample 174 is now embedded
 
 Calculating the Dunn Index for this normalized softmax model, we get 29.11, a clear improvement over the previous model. But we can do even better.
 
-# ArcFace Additive Margin Loss
+## ArcFace Additive Margin Loss
 
 Now that we have normalized the embeddings and class centers, rather than writing the dot product for the logits as:
 
@@ -560,11 +554,8 @@ We have the following for our classifier weights, $W^T$:
 
 $$
 \mathbf{W}^\top = \begin{bmatrix}
-  0.37 & 0.46 \\
-  -0.35 & 0.49 \\
-  -0.05 & -1.19 \\
-  0.34 & -0.12 \\
-  -0.45 & -0.14 \\
+  0.37 & -0.35 & -0.05 & 0.34 & -0.45 \\
+  0.46 & 0.49 & -1.19 & -0.12 & -0.14 \\
 \end{bmatrix}
 $$
 
@@ -701,7 +692,7 @@ class ArcFaceLoss(nn.Module):
         #   sin²(θ) + cos²(θ) = 1
         #   sin(θ) = √(1 - cos²(θ))
         #
-        sin_theta = torch.sqrt(1.0 - torch.pow(cos_theta, 2) + 1e-7)
+        sin_theta = torch.sqrt(1.0 - torch.pow(cos_theta, 2))
 
         # Apply the angular margin penalty: cos(θ+m)
         # Using the trigonometric addition formula:
