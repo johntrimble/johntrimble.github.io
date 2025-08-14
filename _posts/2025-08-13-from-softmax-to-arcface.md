@@ -1,13 +1,13 @@
 ---
 layout: post
-title: "From Softmax to ArcFace: Building Better Embeddings with Additive Angular Margins"
+title: 'From Softmax to ArcFace: Building Better Embeddings with Additive Angular Margins'
 math: true
-media_subpath: /assets/img/posts/arcface-margin-loss
+media_subpath: "/assets/img/posts/arcface-margin-loss"
 image:
   path: arcface_post_image.png
-  alt: ArcFace Margin Loss
+  alt: From Softmax to ArcFace
+date: 2025-08-13 19:52 -0700
 ---
-
 ## Introduction
 
 Imagine trying to build a face identification system that can recognize any face on Earth, not just some fixed set of faces. New faces appear every day, and there's no way to include all of them during training. Traditional classification methods start to fall apart in this kind of *open-ended* problem.
