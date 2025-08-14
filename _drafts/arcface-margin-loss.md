@@ -282,10 +282,6 @@ $$
 * $\theta$ = 90°, dot product is 0 since $\cos(90°) = 0$
 * $\theta$ = 180°, dot product is the product of magnitudes times -1 since $\cos(180°) = -1$ (max negative)
 
-<!--
-With this geometric view in mind, we can now zoom in on a single example to see exactly how the dot product determines which side of these boundaries an embedding falls on.
--->
-
 Plotting the embedding and class centers:
  
 ![Embedding of digit 0 sample with class centers](digit_0_sample_plotted.png)
