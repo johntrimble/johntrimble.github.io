@@ -2,6 +2,7 @@
 layout: post
 title: 'From Softmax to ArcFace: Building Better Embeddings with Additive Angular Margins'
 math: true
+comments: false
 media_subpath: "/assets/img/posts/arcface-margin-loss"
 image:
   path: arcface_post_image.png
