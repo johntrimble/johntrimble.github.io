@@ -15,9 +15,21 @@ I enjoy board games, but they are often complex, with many rules and rule intera
 
 With rulebooks for popular games like *Gloomhaven* exceeding 70 pages, it is easy to see how players can get lost. The problem grows far worse if we include miniature wargames and roleplaying games, which often have hundreds of pages of rules and errata. I wanted to build a tool to help players get answers to their questions quickly and accurately, so they can spend more time playing and less time looking up rules. That tool is [Boardbarian](https://boardbarian.com).
 
+Tossing a rulebook at a big frontier model like Claude Opus would be a straightforward way to solve this problem. It would also be a lot of money to spend just to avoid paging through a rulebook. Boardbarian instead uses a much smaller model. On its own, the small model often gets these questions wrong, but the workflow Boardbarian wraps around it turns those wrong answers into reliable ones, with verified rulebook quotes, for about half a cent per question.
+
 ## What an answer looks like
 
-The interaction with Boardbarian is simple: the user selects the game they are playing, then asks their question. If the selected game is *Warhammer Fantasy Battle 5th Edition*, and the user asks, "Do Grail Knights have to take a Break test when they lose a round of combat?", Boardbarian might respond with:
+The interaction with Boardbarian is simple: the user selects the game they are playing, then asks their question. For our example, the game will be *Warhammer Fantasy Battle 5th Edition*, which deserves a little introduction before we get to the question.
+
+*Warhammer Fantasy Battle* is a miniature wargame where players build armies of miniatures, organized into units or regiments of troops, and fight large battles on a tabletop. There are too many rules to cover here, but our question only needs three ideas: combat, Break tests, and psychology.
+
+When two units meet on the battlefield, they fight in rounds of combat. Each side rolls dice to injure the other, and the side that comes off worse loses the round.
+
+When a unit loses a round of combat, the survivors might elect to flee instead of standing their ground and fighting on. This is determined by rolling some dice and is called a Break test.
+
+Psychology is about how units react to fear, terror, and panic. If a player instructs their unit of peasants to charge a fire-breathing dragon, they might elect not to do so, because dragons cause terror. This is determined by rolling some dice and is called a psychology test.
+
+Now Grail Knights are a particularly prestigious order of knights and have a special rule where they are immune to psychology. Given that Break tests have the feel of being related to psychology, it would be natural to ask: "Do Grail Knights have to take a Break test when they lose a round of combat?" Give this question to Boardbarian, and it will answer with a detailed explanation, quoting the relevant rules from the rulebooks:
 
 > Yes, Grail Knights do need to take Break tests as normal.
 >
@@ -35,6 +47,8 @@ The interaction with Boardbarian is simple: the user selects the game they are p
 >
 > Therefore, even though Grail Knights are immune to psychology tests, they must still take Break tests when they lose combat.
 
+Here we see Boardbarian get it right: Grail Knights are immune to psychology, yet they still take Break tests, and the answer cites the passage that settles it: "a Break test is not a psychology test."
+
 In the rest of this post, we will look at how Boardbarian gets to an answer like this.
 
 
@@ -48,7 +62,7 @@ Board game rules are a semi-formal language. They aren't as formal as legalese, 
 
 Reading that, a Break test certainly sounds psychology-related. To successfully navigate rules like this, the system must understand the specific meaning of words in the context of the game.
 
-Another challenge with rules questions is that board games tend to have a lot of meta rules: rules about rules. Here's an example from *Munchkin*:
+Another challenge with rules questions is that board games tend to have a lot of meta rules: rules about rules. This is true even for lighter fare like *Munchkin*, a comedic card game where players race to Level 10 by fighting monsters and playing cards on each other. Here's an example from its rulesheet:
 
 > This rulesheet gives the general rules. Many cards add special rules, so in most cases when the rulesheet disagrees with a card, follow the card. However, ignore any card effect that might seem to contradict one of the rules listed below unless the card explicitly says it supersedes that rule!
 >
@@ -82,7 +96,7 @@ We have the following requirements for Boardbarian:
 
 ## Small models
 
-The cost requirement largely constrains us to using smaller models. Originally that meant [Mistral 7B](https://huggingface.co/mistralai/Mistral-7B-v0.1) and its various fine-tuned variants; today the prompts and workflow are built around [Qwen3 30B A3B Instruct](https://huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507), though as we'll see later in the series, the exact model answering a given question can vary. While the smaller Qwen models are cheap to run, they come with a number of challenges. Their reasoning capabilities are relatively weak, their ability to retain output quality over long contexts is limited, they can struggle with tool calling (a byproduct of weak reasoning), and they have a propensity for getting caught in endless generation loops (doom looping).
+The cost requirement largely constrains us to using smaller models. Originally that meant [Mistral 7B](https://huggingface.co/mistralai/Mistral-7B-v0.1) and its various fine-tuned variants; today the prompts and workflow are built around [Qwen3 30B A3B Instruct](https://huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507), though as we'll see later in the series, the exact model answering a given question can vary. While the smaller Qwen models are cheap to run, they come with a number of challenges. Their reasoning capabilities are relatively weak; their ability to retain output quality over long contexts is limited; their tool calling is flaky, as they cannot reliably judge when a tool call is needed (a byproduct of weak reasoning); and they have a propensity for getting caught in endless generation loops (doom looping).
 
 To illustrate the challenges of using smaller models, consider this simple question for the game *Munchkin*:
 
@@ -122,14 +136,14 @@ and the following pieces of context from the rulebooks, along with the Break tes
 >
 > (Warhammer Rulebook, p. 46)
 
-The trouble here is that a Break test sounds a lot like a psychology test, and Grail Knights are immune to psychology. The excerpt that says "a Break test is not a psychology test" should be enough to clear up any confusion, and yet, a small Qwen3 model, even with a pristine context with no distractors, will often fail to answer the question correctly, claiming that Grail Knights do not have to take Break tests because they are immune to psychology.
+The trouble here is that a Break test sounds a lot like a psychology test, and Grail Knights are immune to psychology. The excerpt that says "a Break test is not a psychology test" should be enough to clear up any confusion, and yet, a small Qwen3 model, even with a pristine context free of distractors, will often fail to answer the question correctly, claiming that Grail Knights do not have to take Break tests because they are immune to psychology.
 
 Long contexts only make matters worse. While Qwen3 30B A3B Instruct can, on paper, handle contexts of around 260k tokens, in practice it starts losing output quality once the context exceeds roughly 40k tokens. This means we must be especially economical with the context we provide to the model.
 
 
 ## Workflow design
 
-Agentic AI solutions sit on a spectrum between fully autonomous agents and simple workflows. Such agents are the most flexible and powerful, but they can be expensive to run and difficult to control. Given our requirements around cost and speed, the solution here falls much more on the workflow side of the spectrum. I designed the workflow to lean on the strengths of a small model and work around its limitations. The general flow for answering a question is as follows:
+Agentic AI solutions sit on a spectrum between fully autonomous agents and simple workflows. Fully autonomous agents are the most flexible and powerful, but they can be expensive to run and difficult to control. Given our requirements around cost and speed, the solution here falls much more on the workflow side of the spectrum. I designed the workflow to lean on the strengths of a small model and work around its limitations. The general flow for answering a question is as follows:
 
 ```mermaid
 flowchart TD
@@ -142,13 +156,17 @@ flowchart TD
     G -->|Yes| J([Return the answer])
 ```
 
-The workflow first checks whether rulebook passages were already supplied. This will matter later, when the workflow is reused as a building block and the caller provides passages up front. If none were supplied, the workflow forces the model to make a search tool call, which supports multiple queries. Forcing the call, rather than trusting the model to decide when to search, sidesteps the flaky tool calling of small models. The search is also scoped to the game the user selected up front, so there is no chance of rules from an unrelated game finding their way into the context. The search service uses hybrid search to find relevant passages, limiting how many it returns using the *adaptive k* approach from [Efficient Context Selection for Long-Context QA: No Tuning, No Iteration, Just Adaptive-k (Taguchi et al., 2025)](https://arxiv.org/abs/2506.08479). After this point, the workflow does not allow the model to gather any more context, as the context size must remain roughly 40k tokens or less to retain reasoning capability.
+The workflow first checks whether rulebook passages were already supplied. This will matter later, when the workflow is reused as a building block and the caller provides passages up front. If none were supplied, the workflow forces the model to make a search tool call, which supports multiple queries. If a small model, like the Qwen model we are using, were allowed to choose when to call the search tool, it might slip into a doom loop, endlessly calling the search tool to gather more context. By forcing exactly one search tool call, we avoid the doom loop and sidestep the flaky tool calling of small models. The search is also scoped to the game the user selected up front, so there is no chance of rules from an unrelated game finding their way into the context.
 
-Since the workflow bounds the total number of generations, it limits the amount of damage a doom loop can do. A doom loop can still happen, driving a generation to the output token limit, but it cannot cascade into an unbounded number of generations, such as the model endlessly calling the search tool to gather more context. Doom loops within a single generation are handled mainly by tuning sampling parameters, which is a story about evaluations, and a topic for the next post in this series.
+The search itself is hybrid, matching passages on both meaning and exact wording, which matters for games where words carry specific meanings. Another aspect of the search is how many matching passages to add to the context. Rather than pick a fixed number, we use *adaptive k* from [Efficient Context Selection for Long-Context QA: No Tuning, No Iteration, Just Adaptive-k (Taguchi et al., 2025)](https://arxiv.org/abs/2506.08479), which varies the number of passages returned based on how well they match the search query.
+
+After the initial search, the workflow gathers no further context. This is important because the context size must remain roughly 40k tokens or less to retain reasoning capability.
 
 With the context in hand, the workflow prompts the model with the passages and the user query to produce an answer supported by quotes from those passages. It then validates the quotes against the context using a fuzzy string match to ensure they are real and not hallucinated. If any quote fails validation, the workflow reprompts the model to fix the answer. This repair loop is bounded: if the quotes still fail validation after five attempts, the system returns an error rather than an answer it cannot support. Once every quote checks out, the workflow returns the answer to the user.
 
 Quote validation is what allows the system to reflect on its own work and correct itself. It also provides the user with the ability to verify that the answer makes sense by checking that the quotes provided actually support the answer.
+
+Since the workflow bounds the total number of generations, it limits the amount of damage a doom loop can do. A doom loop can still happen, driving a generation to the output token limit, but it cannot cascade into an unbounded number of generations like the endless searching described above. Doom loops within a single generation are handled mainly by tuning sampling parameters, which is a story about evaluations, and a topic for the next post in this series.
 
 Even when the context is limited to 40k tokens, some questions are still too complex for the model to reason about correctly. In these cases, the workflow has the model break the question down into subquestions and answer each independently, then pools the subanswers to answer the original question. This allows the model to reason about each subquestion in isolation, without being distracted by other parts of the question. This also helps deal with multi-hop retrieval, as the subquestions can address the relevant rules that were not mentioned in the original question. Here's the workflow for answering a question with subquestions:
 
@@ -170,7 +188,7 @@ flowchart TD
     O --> P([Done])
 ```
 
-The double-bordered steps in this diagram are invocations of the answer workflow shown earlier. For example, returning to our question "Do Grail Knights have to take a Break test when they lose a round of combat?", if the system were to prompt the model to answer that question directly, there's a decent chance it would get it wrong even with the correct context. With the above workflow, the model should produce a subquestion like "Is a Break test a psychology test?", which allows the model to reason just about the relationship between Break tests and psychology tests, without having to reason about Grail Knights at the same time. By having the model juggle fewer concepts at once, it is more likely to reason correctly.
+The double-bordered steps in this diagram are invocations of the answer workflow shown earlier. For example, returning to our question "Do Grail Knights have to take a Break test when they lose a round of combat?", if the system were to prompt the model to answer that question directly, there's a decent chance it would get it wrong even with the correct context. With the above workflow, the model should produce a subquestion like "Is a Break test a psychology test?", which allows the model to reason just about the relationship between Break tests and psychology tests, without having to reason about Grail Knights at the same time. The model is more likely to reason correctly when it juggles fewer concepts at once.
 
 Notably, even though we gathered context at the outset, we do not pass that context to the model when answering the subquestions. This is to ensure the model's context remains uncluttered to preserve its reasoning capability. Of course, the tradeoff is that each subquestion has to search for passages again.
 
