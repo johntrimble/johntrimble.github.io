@@ -13,8 +13,7 @@ image:
 
 I enjoy board games, but they are often complex, with many rules and rule interactions to keep track of. I've been in gaming sessions where I spent more time puzzling over the specific wording of a rule or digging through tomes of text seeking clarity than actually playing the game. What's worse, I've on occasion thought I'd resolved a rule question, only to later discover a relevant exception buried in a different section of the rulebook.
 
-With rulebooks for popular games like *Gloomhaven* exceeding 70 pages, it is easy to see how players can get lost. The problem grows far worse if we include miniature wargames, which often have hundreds of pages of rules and errata. I wanted to build a tool to help players get answers to their questions quickly and accurately, so they can spend more time playing and less time looking up rules. That tool is [Boardbarian](https://boardbarian.com).
-
+With rulebooks for popular games like *Gloomhaven* exceeding 70 pages, it is easy to see how players can get lost. The problem grows far worse if we include miniature wargames and roleplaying games, which often have hundreds of pages of rules and errata. I wanted to build a tool to help players get answers to their questions quickly and accurately, so they can spend more time playing and less time looking up rules. That tool is [Boardbarian](https://boardbarian.com).
 
 ## What an answer looks like
 
@@ -63,9 +62,9 @@ Another challenge with rules questions is that board games tend to have a lot of
 >
 > (Munchkin Rules, p. 1)
 
-This means that to properly understand the rules of a game, the system must also understand the rules about how to interpret those rules. This adds another layer of complexity to the problem.
+This means that to properly understand the rules of a game, the system must also understand the rules about how to interpret those rules.
 
-Related to both of these is the multi-hop retrieval problem. To answer the Grail Knights question, the rules defining what psychology is and, most importantly, the rule that explicitly states that Break tests are not psychology tests must be retrieved and present in the context. In *Munchkin*, when someone asks a question about a card with special rules, the meta-rules about how to interpret those rules must be retrieved and applied. The need to retrieve these additional pieces of information may not be obvious from the question itself, so the system must be able to recognize when additional information is needed and know how to retrieve it.
+Related to both of these is the problem of multi-hop retrieval. For example, when answering the Grail Knights question, some rules are clearly relevant just from the question itself: the rules defining what Grail Knights are, what combat is, and what a Break test is. However, there are rules not directly mentioned in the question that are also relevant: the rules defining what psychology is and, most importantly, the rule that explicitly states that Break tests are not psychology tests. The same happens with meta rules: a question about a *Munchkin* card with special rules pulls in the interpretation rules without mentioning them. To answer a question correctly, the system must retrieve and present all of these rules in context, including those not directly mentioned in the question.
 
 Rules questions are hard both in finding the right rules and in reasoning about them. As we'll see, the second is where small models struggle most.
 
@@ -83,7 +82,7 @@ We have the following requirements for Boardbarian:
 
 ## Small models
 
-The cost requirement largely constrains us to using smaller models. Originally that meant Mistral 7B and its various fine-tuned variants; today the prompts and workflow are built around [Qwen3 30B A3B Instruct](https://huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507), though as we'll see later in the series, the exact model answering a given question can vary. While the smaller Qwen models are cheap to run, they come with a number of challenges. Their reasoning capabilities are relatively weak, their ability to retain output quality over long contexts is limited, they can struggle with tool calling (a byproduct of weak reasoning), and they have a propensity for getting caught in endless generation loops (doom looping).
+The cost requirement largely constrains us to using smaller models. Originally that meant [Mistral 7B](https://huggingface.co/mistralai/Mistral-7B-v0.1) and its various fine-tuned variants; today the prompts and workflow are built around [Qwen3 30B A3B Instruct](https://huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507), though as we'll see later in the series, the exact model answering a given question can vary. While the smaller Qwen models are cheap to run, they come with a number of challenges. Their reasoning capabilities are relatively weak, their ability to retain output quality over long contexts is limited, they can struggle with tool calling (a byproduct of weak reasoning), and they have a propensity for getting caught in endless generation loops (doom looping).
 
 To illustrate the challenges of using smaller models, consider this simple question for the game *Munchkin*:
 
@@ -109,7 +108,7 @@ The relevant context for this question is the following from the *Munchkin* rule
 > (Munchkin Rules, p. 2)
 
 
-Now, given that context, you'd expect the model to answer, "Yes, you can play a Go Up a Level card while in combat," without much difficulty. Alas, this question caused a great deal of trouble early on. Neither Mistral nor its derivatives could reliably answer that question correctly with that context. Even GPT-3.5 struggled with it. Luckily, the small models have gotten better at reasoning over time, but it's still easy to find cases where they struggle even when only relatively simple reasoning is required. For example, consider the question earlier about Grail Knights and Break tests:
+Now, given that context, you'd expect the model to answer, "Yes, you can play a Go Up a Level card while in combat," without much difficulty. Alas, this question caused a great deal of trouble early on. Neither Mistral nor its derivatives could reliably answer that question correctly with that context. Even GPT-3.5 struggled with it. Luckily, the small models, Qwen included, have gotten better at reasoning over time, but it's still easy to find cases that trip them up even when only relatively simple reasoning is required. For example, consider the question earlier about Grail Knights and Break tests:
 
 > Do Grail Knights have to take a Break test when they lose a round of combat?
 
@@ -130,11 +129,11 @@ Long contexts only make matters worse. While Qwen3 30B A3B Instruct can, on pape
 
 ## Workflow design
 
-Agentic AI solutions sit on a spectrum between fully autonomous agents and simple workflows. Fully autonomous agents are the most flexible and powerful, but they can be expensive to run and difficult to control. Given our requirements around cost and speed, the solution here falls much more on the workflow side of the spectrum. I designed the workflow to lean on the strengths of a small model and work around its limitations. The general flow for answering a question is as follows:
+Agentic AI solutions sit on a spectrum between fully autonomous agents and simple workflows. Such agents are the most flexible and powerful, but they can be expensive to run and difficult to control. Given our requirements around cost and speed, the solution here falls much more on the workflow side of the spectrum. I designed the workflow to lean on the strengths of a small model and work around its limitations. The general flow for answering a question is as follows:
 
 ```mermaid
 flowchart TD
-    A([Answer the question]) --> B{"Rulebook passages<br/>in the context?"}
+    A([Question]) --> B{"Rulebook passages<br/>in the context?"}
     B -->|No| C["Search the rulebooks for<br/>relevant passages"]
     B -->|Yes| E
     C --> E["Write up an answer, quoting the<br/>rulebook as support"]
@@ -151,7 +150,7 @@ With the context in hand, the workflow prompts the model with the passages and t
 
 Quote validation is what allows the system to reflect on its own work and correct itself. It also provides the user with the ability to verify that the answer makes sense by checking that the quotes provided actually support the answer.
 
-Even when the context is limited to 40k tokens, some questions are still too complex for the model to reason about correctly. In these cases, the workflow has the model break the question down into subquestions and answer each independently, then pools the subanswers to answer the original question. This allows the model to reason about each subquestion in isolation, without being distracted by other parts of the question:
+Even when the context is limited to 40k tokens, some questions are still too complex for the model to reason about correctly. In these cases, the workflow has the model break the question down into subquestions and answer each independently, then pools the subanswers to answer the original question. This allows the model to reason about each subquestion in isolation, without being distracted by other parts of the question. This also helps deal with multi-hop retrieval, as the subquestions can address the relevant rules that were not mentioned in the original question. Here's the workflow for answering a question with subquestions:
 
 ```mermaid
 flowchart TD
@@ -175,11 +174,9 @@ The double-bordered steps in this diagram are invocations of the answer workflow
 
 Notably, even though we gathered context at the outset, we do not pass that context to the model when answering the subquestions. This is to ensure the model's context remains uncluttered to preserve its reasoning capability. Of course, the tradeoff is that each subquestion has to search for passages again.
 
-Quote validation also works a little differently for subquestions. Rather than reprompting the model to repair a bad quote, the workflow simply strips invalid quotes from the subanswer, and drops any subanswer that still fails validation before pooling. This ensures a hallucinated quote in a subanswer can never propagate into the final answer's evidence. The reason for dropping invalid quotes in subanswers rather than fixing them is that there is often a degree of redundancy in the subanswers, so dropping them saves both time and cost with little detriment to the final answer.
-
 For simple questions like "What is the hand limit for Munchkin?", the model can answer directly without breaking the question into subquestions and without needing to gather additional context. This allows the system to answer simple questions quickly and cheaply, while still being able to handle more complex questions.
 
-To deal with followup questions and ongoing conversations, the system maintains a conversation history with the user. However, every new message, along with that history, is always transformed into a single query for the system to answer. This allows the system to maintain context across multiple turns of conversation, while still keeping the context size small enough to preserve reasoning performance, at the cost of some added latency.
+To deal with followup questions and ongoing conversations, the system maintains a conversation history with the user. However, every new message, along with that history, is always compressed into a single query for the system to answer. This allows the system to maintain context across multiple turns of conversation, while still keeping the context size small enough to preserve reasoning performance, at the cost of some added latency.
 
 
 ## Conclusion
@@ -196,8 +193,6 @@ Looking back at the requirements:
 
 4. **Auditable.** Every answer carries quotes that have been verified to actually appear in the rulebook, complete with page citations, so users can check the reasoning rather than take it on faith. This same auditability is what allows the system to correct itself when it fabricates a quote, by validating every quote and reprompting the model when one fails.
 
-Now you might be wondering: how do I know any of this works? From the outset, evaluations played a central role in determining what works and what doesn't. That story deserves its own post.
-
-This is the first post in a series on Boardbarian. Next up is how Boardbarian fails: the failures that shaped this design, and the evaluation system that catches them.
+Now you might be wondering: how do I know any of this works? From the outset, evaluations played a central role in determining what works and what doesn't. That story deserves its own post, and it's next in this series: how Boardbarian fails, the failures that shaped this design, and the evaluation system that catches them.
 
 Boardbarian is live at [boardbarian.com](https://boardbarian.com) if you'd like to try it yourself.
