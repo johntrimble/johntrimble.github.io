@@ -1,15 +1,16 @@
 ---
 layout: post
 title: How Boardbarian Thinks
-excerpt: Answering board game rules questions with a small model, for about half a cent a question. A workflow that keeps the model on rails, breaks hard questions into subquestions, and verifies every rulebook quote.
-date: 2026-07-16 09:57 -0700
+excerpt: Answering board game rules questions with a small model, for about half a
+  cent a question. A workflow that keeps the model on rails, breaks hard questions
+  into subquestions, and verifies every rulebook quote.
+date: 2026-08-03 07:00 -0700
 mermaid: true
 comments: false
-media_subpath: /assets/img/posts/how-boardbarian-thinks/
+media_subpath: "/assets/img/posts/how-boardbarian-thinks/"
 image:
-    path: how_boardbarian_thinks.png
+  path: how_boardbarian_thinks.png
 ---
-
 ## Introduction
 
 I enjoy board games, but they are often complex, with many rules and rule interactions to keep track of. I've been in gaming sessions where I spent more time puzzling over the specific wording of a rule or digging through tomes of text seeking clarity than actually playing the game. What's worse, I've on occasion thought I'd resolved a rule question, only to later discover a relevant exception buried in a different section of the rulebook.
