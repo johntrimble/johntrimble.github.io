@@ -18,6 +18,17 @@
     {% assign content = content | replace: '</td><td class="rouge-code">', '</td> --><td class="rouge-code">' %}
   {% endif %}
 
+  {% comment %}
+    Remove headings (tag and text) so the summary doesn't lead with the first section title.
+  {% endcomment %}
+  {% assign heading_tags = 'h1,h2,h3,h4' | split: ',' %}
+  {% for tag in heading_tags %}
+    {% assign open_tag = '<' | append: tag %}
+    {% assign close_tag = '</' | append: tag | append: '>' %}
+    {% assign parts = content | split: close_tag %}
+    {% capture content %}{%- for part in parts -%}{{ part | split: open_tag | first }}{%- endfor -%}{% endcapture %}
+  {% endfor %}
+
   {{- content | markdownify | strip_html | newline_to_br | replace: '<br />', ' ' | strip_newlines -}}
 {%- endif -%}
 {%- endcapture -%}

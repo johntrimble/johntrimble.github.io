@@ -221,6 +221,7 @@ exclude:
   - "script"
   - "medium_output"
   - "convert_to_medium"
+  - "reference_repositories"
 
 jekyll-archives:
   enabled: [categories, tags]

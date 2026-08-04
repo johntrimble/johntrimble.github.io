@@ -5,3 +5,6 @@ _site
 .bundle
 vendor
 .gitkeep
+__pycache__
+*.pyc
+.vscode
