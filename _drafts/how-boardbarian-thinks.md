@@ -4,6 +4,7 @@ title: How Boardbarian Thinks
 excerpt: Answering board game rules questions with a small model, for about half a cent a question. A workflow that keeps the model on rails, breaks hard questions into subquestions, and verifies every rulebook quote.
 date: 2026-07-16 09:57 -0700
 mermaid: true
+comments: false
 media_subpath: /assets/img/posts/how-boardbarian-thinks/
 image:
     path: how_boardbarian_thinks.png
