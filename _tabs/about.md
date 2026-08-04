@@ -24,6 +24,7 @@ What connects these areas for me is a focus on useful systems: understanding the
 * **Education:** B.S. in Computer Science, University of Arizona
 * **Previous work:** meltmedia, LivingSocial, academic research in OS kernel optimization
 * **Areas of interest:** Applied AI, distributed systems, and Kubernetes
+
 ---
 
 ## Connect
