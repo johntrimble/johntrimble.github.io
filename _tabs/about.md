@@ -4,21 +4,26 @@ icon: fas fa-info-circle
 order: 4
 ---
 
-Hi, I’m **John Trimble** — a machine learning engineer and tech lead.
+Hi, I’m **John Trimble**, a software engineer and technical lead focused on distributed systems, cloud infrastructure, and applied AI.
 
-With nearly two decades of experience, I've spent my career designing, developing, and scaling software systems. My journey here has included many phases: from shipping resilient backend systems, to architecting Kubernetes operators, to forecasting CPU usage from live production metrics. Along the way, I’ve built internal tools, contributed to open source (e.g. [cass-operator](https://github.com/datastax/cass-operator)), and engaged stakeholders across the board—product, customers, support, and multiple engineering disciplines—to align on goals and deliver results.
+For nearly two decades, I’ve designed, built, and operated software across its full lifecycle. I enjoy taking an ambiguous problem, turning it into a concrete technical approach, shipping the resulting system, and continuing to improve it as requirements and real-world conditions change.
 
-I currently lead autoscaling for [Astra DB Serverless](https://docs.datastax.com/en/astra-db-serverless/index.html), where we create self-driving systems—powered by data, models, and automation—that monitor themselves, adapt to changing workloads, and scale to meet user needs.
+My work has ranged from backend applications and Kubernetes operators to systems for managing and scaling distributed databases. Along the way, I’ve contributed to open-source projects such as [cass-operator](https://github.com/datastax/cass-operator), built internal engineering tools, mentored other engineers, and worked across product, support, customer-facing, and engineering teams to solve practical problems.
+
+I currently serve as a technical lead for autoscaling in [Astra DB Serverless](https://docs.datastax.com/en/astra-db-serverless/index.html). I’ve helped shape the autoscaling service from its initial design through implementation, deployment, operational support, and continued development. The system uses live metrics, forecasting, and automation to adapt database capacity to changing workloads.
+
+I’ve also been working with large language models and agentic AI, with a focus on making these systems dependable enough for real-world use. My work includes retrieval-augmented generation, grounded citation workflows, agent evaluation, and [Boardbarian](https://boardbarian.com), a board-game rules assistant built with LangChain and LangGraph.
+
+What connects these areas for me is a focus on useful systems: understanding the underlying problem, choosing an appropriate technical approach, and building something that remains reliable after the initial demo.
 
 ---
 
 ## Background
 
-- **Current Role**: Tech Lead, DataStax (Astra DB / Serverless Cassandra)
-- **Education**: B.S. in Computer Science, University of Arizona
-- **Past Work**: meltmedia, LivingSocial, academic research in OS kernel optimization
-- **Certifications**: Deep Learning Specialization, GANs, ML Foundations
-
+* **Current role:** Technical Lead, DataStax/IBM, Astra DB Serverless
+* **Education:** B.S. in Computer Science, University of Arizona
+* **Previous work:** meltmedia, LivingSocial, academic research in OS kernel optimization
+* **Areas of interest:** Applied AI, distributed systems, and Kubernetes
 ---
 
 ## Connect
@@ -31,4 +36,4 @@ I currently lead autoscaling for [Astra DB Serverless](https://docs.datastax.com
 
 ---
 
-I’m keen to bring machine-learning innovations into production systems—if that sounds like your team’s challenge, let’s chat.
+I’m especially interested in work that brings applied AI into complex, real-world systems and carries it from initial design through deployment, operation, and continued improvement. If that sounds like the kind of challenge your team is tackling, I’d love to hear from you.
