@@ -22,9 +22,8 @@ What connects these areas for me is a focus on useful systems: understanding the
 
 * **Current role:** Technical Lead, DataStax/IBM, Astra DB Serverless
 * **Education:** B.S. in Computer Science, University of Arizona
-* **Previous work:** LivingSocial, meltmedia and academic research in operating-system kernel optimization
-* **Areas of interest:** Applied AI, distributed systems, Kubernetes, observability, developer tooling, and system reliability
-
+* **Previous work:** meltmedia, LivingSocial, academic research in OS kernel optimization
+* **Areas of interest:** Applied AI, distributed systems, and Kubernetes
 ---
 
 ## Connect
