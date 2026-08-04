@@ -14,19 +14,19 @@ Today I document the saga of building an quadrature rotary encoder. I undertook 
 A quadrature encoder translates rotational changes of an object into a digital signal. They have a number applications, including robotics where they are used to determine velocity and position which can be infrared from the rotation of the motor shaft(s). There are a number of ways to do this, but the ways I've experimented with involve an encoder wheel (Figure 1), and the use of infrared emitters and collectors. To keep it simple for now, lets consider only one emitter and one collector. The encoder wheel is designed to alternate the amount of infrared light reaching the collector from low to high at regular intervals as it rotates. One can achieve this by either "cutting out" the black sections in Figure 1 and placing the collector on one side of the disc and the emitter on the other such that as the disc rotates it will block and unblock the collector. The other method involves taking advantage of how light colors reflect more infrared light than dark colors. Thus by placing the emitter and collector on the colored side of the encoder wheel, the same effect can be achieved as the amount of infrared reflected will vary from low to high, and consequently the amount reaching the collector will vary from low to high, as the encoder wheel turns. In both cases, the analog output of the collector will look something like Figure 2 which is then turned into a digital signal also show in Figure 2.
 
 <figure class="center" style="width: 100%;">
-  <img src="/assets/img/posts/building-an-incremental-rotary-encoder/encoder-wheel.svg" style="width: 100%;" />
+  <img src="/assets/img/posts/building-an-incremental-rotary-encoder/encoder-wheel.svg" style="width: 100%;" alt="Single channel encoder wheel next to a two channel encoder wheel" />
   <figcaption>Figure 1. Single channel encoder wheel (left) and a two channel encoder wheel (right).</figcaption>
 </figure>
 
 <figure class="center" style="width: 100%;">
-  <img src="/assets/img/posts/building-an-incremental-rotary-encoder/analog-digital-wave.svg" style="width: 100%;" />
+  <img src="/assets/img/posts/building-an-incremental-rotary-encoder/analog-digital-wave.svg" style="width: 100%;" alt="An analog wave above a digital square wave derived from it" />
   <figcaption>Figure 2. An analog wave (top) and a digital square wave (below).</figcaption>
 </figure>
 
 From this signal, one can determine speed based upon the frequency--the higher the frequency, the higher the speed. Unfortunately, this signal doesn't provide one critical piece of information: the direction.
 
 <figure class="center" style="width: 100%;">
-  <img src="/assets/img/posts/building-an-incremental-rotary-encoder/quadrature-signal.svg" style="width: 100%;" />
+  <img src="/assets/img/posts/building-an-incremental-rotary-encoder/quadrature-signal.svg" style="width: 100%;" alt="Quadrature signal from channels A and B with the corresponding gray codes for each state" />
   <figcaption>Figure 3. Quardrature signal and the corresponding gray codes representing each possible state.</figcaption>
 </figure>
 
@@ -40,7 +40,7 @@ By adding a second emitter/collector pair, radially aligned with the first pair,
 When the wheel turns clockwise, it produces the sequence of gray codes: 00, 01, 11, 10, 00, 01, etc. When turned counterclockwise, it produces the same sequence but in the opposite order: 00, 10, 11, 01, 00, 10, etc. Thus the direction of rotation can be inferred from the order of the gray codes. That's the basics of an quadrature rotary encoder.
 
 ## What I'm looking for
-I have a somewhat larger robotics project I've been considering working on (I won't talk about the specifics until I start on it), and this encoder fits into that larger scope. In this larger project, I'm considering using a scooter motor and wheels for locomotion, and I want to build a pair of encoders to get rotational information from the scooter wheels which I can then use to determine velocity and position. The encoders will also tie into a [Kangaroo motion controller](http://www.dimensionengineering.com/products/kangaroo), which will in turn drive a [Sabertooth motor controller](http://www.dimensionengineering.com/products/sabertooth2x12). For the most part, the standard quadrature output covers my basic needs; however, I have a few other features in mind such as being able to calibrate the encoders programmatically, perform error checking and error notification, and also provide some basic encoder state information via an [I<sup>2</sup>C interface](http://en.wikipedia.org/wiki/I%C2%B2C).
+I have a somewhat larger robotics project I've been considering working on (I won't talk about the specifics until I start on it), and this encoder fits into that larger scope. In this larger project, I'm considering using a scooter motor and wheels for locomotion, and I want to build a pair of encoders to get rotational information from the scooter wheels which I can then use to determine velocity and position. The encoders will also tie into a [Kangaroo motion controller](https://www.dimensionengineering.com/products/kangaroo), which will in turn drive a [Sabertooth motor controller](https://www.dimensionengineering.com/products/sabertooth2x12). For the most part, the standard quadrature output covers my basic needs; however, I have a few other features in mind such as being able to calibrate the encoders programmatically, perform error checking and error notification, and also provide some basic encoder state information via an [I<sup>2</sup>C interface](https://en.wikipedia.org/wiki/I%C2%B2C).
 
 ## Trial and Error
 ### Attempt 1 - Photo Interrupter
@@ -61,7 +61,7 @@ The main issue with relying on IR reflection is that it varies not only with the
 After spending more time than I care to remember fighting with encoder wheels, I realized that I didn't really need one. The scooter wheel I'm using connects to a sprocket using a flange  and that flange happens to be just wide enough for an encoder strip (Figure 4). I wrote a small Groovy script to generate the encoder strip, printed it on standard printer paper, cut it out, and then glued it with some Elmer's stick glue to the flange. Again, I started with a single channel, and I used the same SEN-00241 IR emitter/collector pair as before. The initial results were promising. I could accurately determine when the wheel had completed a revolution (so long as I didn't change the direction of rotation).
 
 <figure class="center" style="width: 100%;">
-  <img src="/assets/img/posts/building-an-incremental-rotary-encoder/encoder-strip-sprocket-flange.jpg" style="width: 100%;" />
+  <img src="/assets/img/posts/building-an-incremental-rotary-encoder/encoder-strip-sprocket-flange.jpg" style="width: 100%;" alt="Encoder strip glued around the sprocket flange of the scooter wheel" />
   <figcaption>Figure 4. Encoder strip around the sprocket flange of the scooter wheel.</figcaption>
 </figure>
 
@@ -80,9 +80,9 @@ There are a number of ways I could have dealt with the poor analog read performa
 ### Attempt 4 - Encoder Strip with Interrupts
 Since detecting state transitions by polling didn't work, I decided to go the interrupt route instead. I avoided using interrupts up to this point mainly due to their rather negative impact on code complexity. Dealing with the flow of execution getting yanked away at any point, and ensuring the interrupt handlers and main loop don't read or write global data in an inconsistent manner, is hard to manage in an elegant and simple way.
 
- I purchased some [Microchip MCP42010 digital potentiometers](http://www.digikey.com/product-detail/en/MCP42010-I%2FP/MCP42010-I%2FP-ND/362084) and [TI LM339N voltage comparators](http://www.digikey.com/product-detail/en/LM339N/296-1393-5-ND/277628) from [DigiKey](http://www.digikey.com/). The analog signals from the IR sensors were fed through the voltage comparators and their output went to an interrupt on the Arduino. The digital potentiometers were used to create the reference voltage for the voltage comparators and were appropriately programmed during calibration. There were also some extensive code changes as well which I won't go into here.
+ I purchased some [Microchip MCP42010 digital potentiometers](https://www.digikey.com/product-detail/en/MCP42010-I%2FP/MCP42010-I%2FP-ND/362084) and [TI LM339N voltage comparators](https://www.digikey.com/product-detail/en/LM339N/296-1393-5-ND/277628) from [DigiKey](https://www.digikey.com/). The analog signals from the IR sensors were fed through the voltage comparators and their output went to an interrupt on the Arduino. The digital potentiometers were used to create the reference voltage for the voltage comparators and were appropriately programmed during calibration. There were also some extensive code changes as well which I won't go into here.
 
 This approach generated immediate positive results. I currently have the encoder operating with a resolution of 180 pulses per revolution with no issues. There are still a number software problems to work out, and hardware wise, I still need to make a circuit board, but the main obstacles to progress have finally been overcome.
 
 ## Next Steps
-Now that I have a working circuit, I need to start looking into how to turn that circuit into a circuit board. Luckily, my friend [Andy](http://stuffandymakes.com/) recently showed me how to go about making a circuit board using a DIY photoresist method which, at least when he does it, produces some rather impressive results with a relatively low time/money investment.
+Now that I have a working circuit, I need to start looking into how to turn that circuit into a circuit board. Luckily, my friend [Andy](https://stuffandymakes.com/) recently showed me how to go about making a circuit board using a DIY photoresist method which, at least when he does it, produces some rather impressive results with a relatively low time/money investment.
