@@ -10,7 +10,7 @@ image:
 
 ## Introduction
 
-At the end of the [previous post]({% post_url 2026-08-03-how-boardbarian-thinks %}), I asked how I know any of this works. The honest answer starts with failure: getting Boardbarian to a working system meant spending most of my time staring at wrong, sometimes bewildering, answers. This post is about the eval system I built to make sense of that: not just to catch failures, but to tell whether a given change actually helped. And about the one place that system quietly failed me: an LLM judge that lied to me for months.
+At the end of the [previous post]({% post_url 2026-08-03-how-boardbarian-thinks %}), I asked how I know any of this works. The honest answer starts with failure: getting Boardbarian to a working system meant spending most of my time staring at wrong, sometimes bewildering, answers. This post is about the eval system I built to make sense of that: not just to catch failures, but to tell whether a given change actually helped. The system worked. Except for the LLM judge, which lied to me for months.
 
 Let's return to our example from the last post, from the game *Warhammer Fantasy Battle 5th Edition*: "Do Grail Knights have to take a Break test when they lose a round of combat?" This turns out to be a tricky question. Here's a real answer Boardbarian produced during development:
 
@@ -67,23 +67,23 @@ Incredible. Resolving problems like these took more than poking at prompts and p
 
 Failures like those above are why most of my effort has gone into evaluations. Debugging them one at a time by hand doesn't scale, so early on I invested in an automated eval system with these requirements:
 
-1. **Meaningful.** It has to catch real failures on real questions, not benchmark trivia. Real questions carry all the game-specific vocabulary, meta-rules, and multi-hop retrieval the first post described.
+1. **Meaningful.** It has to catch real failures on real questions. Real questions carry all the game-specific vocabulary, meta-rules, and multi-hop retrieval the first post described.
 2. **Cheap.** I run lots of experiments, mostly on my homelab, so a full eval run has to be affordable enough to repeat constantly.
 3. **Trustworthy.** When the evals say one approach beats another, that verdict has to be one I can act on.
 
 
 ## Whack-a-mole
 
-When a failure shows up, the temptation is to fix it directly: adjust the prompt, tweak a sampling parameter, rerun the failing question, and celebrate when it passes. The problem is that every one of these knobs is connected to everything else. Tweaking sampling parameters to resolve runaway generations can degrade quoting accuracy. Rewording the prompt to produce more accurate answers can increase the tendency toward runaway generations. Fix the Grail Knights question, and something you didn't think to recheck quietly breaks.
+When a failure shows up, the temptation is to fix it directly: adjust the prompt, tweak a sampling parameter, rerun the failing question, and call it fixed. The problem is that every one of these knobs is connected to everything else. Tweaking sampling parameters to resolve runaway generations can degrade quoting accuracy. Rewording the prompt to produce more accurate answers can increase the tendency toward runaway generations. Fix the Grail Knights question, and something you didn't think to recheck quietly breaks.
 
-Manual spot-checking can only tell you whether a change fixed the case you were staring at. It says nothing about what the change did to every other question. After enough rounds of this, the conclusion was hard to avoid: you can't fix what you can't measure.
+Spot-checking is valuable. It's how you notice something is wrong in the first place, and it stays useful even after you've built an automated system, as I'll get to later. But it scales poorly on its own: checking whether a change fixed one issue doesn't tell you if it caused another. To iterate quickly, you need something spot-checking alone can't give you: automated, repeatable, comprehensive coverage.
 
 
 ## Measuring failure
 
-Boardbarian fails in three distinct ways, and the eval system has a metric for each:
+Boardbarian fails in three recurring ways, and the eval system has a metric for each:
 
-1. **Wrong answers.** The headline metric is correctness: does the system's answer agree with a hand-written expected answer? An LLM judge grades this, using an implementation of the approach from [G-Eval: NLG Evaluation using GPT-4 with Better Human Alignment (Liu et al., 2023)](https://arxiv.org/abs/2303.16634), built on [DeepEval](https://github.com/confident-ai/deepeval).
+1. **Wrong answers.** The headline metric is correctness: does the system's answer agree with a hand-written expected answer? Correctness is graded by an LLM judge built on [DeepEval](https://github.com/confident-ai/deepeval)'s implementation of [G-Eval: NLG Evaluation using GPT-4 with Better Human Alignment (Liu et al., 2023)](https://arxiv.org/abs/2303.16634), which replaced an earlier hand-rolled judge (more on that swap later). Since making the switch, and moving to newer models along the way, I've re-run or redone nearly every experiment described in this post under the current judge.
 
 2. **Fabricated evidence.** Every answer must support itself with quotes from the rulebook, and as described in the first post, quotes are validated at runtime with fuzzy matching. The evals track how often the model hallucinates quotes. Even when the repair loop catches them, a rising hallucination rate means more retries, which means slower and more expensive answers.
 
@@ -100,27 +100,19 @@ Once the suite existed, I could treat design choices as experiments. Back when I
 
 Most of the advice on offer rested on theoretical arguments or anecdotal experience rather than comparative measurements. These were effectively hyperparameters, so I treated them the usual way: enumerate the options, search over their combinations where necessary, and measure the results.
 
-A few of the results were quick wins. Parent-child chunking, with parent chunks of roughly 500 tokens and child chunks of roughly 125 (roughly, to avoid splitting mid-sentence), beat every flat chunk size I tried. Swapping [jina-embeddings-v2-base-en](https://huggingface.co/jinaai/jina-embeddings-v2-base-en) for the smaller, cheaper [bge-small-en-v1.5](https://huggingface.co/BAAI/bge-small-en-v1.5) cost nothing in accuracy. And prompt tuning stayed useful throughout: a change that fixed one class of question could easily degrade another, or push the model into a doom loop, and the evals were the only way to see that happening across the whole suite instead of just the question in front of me.
+A few of the results were quick wins, all measured against the same suite described above rather than a handful of spot checks. Parent-child chunking, with parent chunks of roughly 500 tokens and child chunks of roughly 125 (roughly, to avoid splitting mid-sentence), beat every flat chunk size I tried. Swapping [jina-embeddings-v2-base-en](https://huggingface.co/jinaai/jina-embeddings-v2-base-en) for the smaller, cheaper [bge-small-en-v1.5](https://huggingface.co/BAAI/bge-small-en-v1.5) cost nothing in accuracy. And prompt tuning stayed useful throughout: a change that fixed one class of question could easily degrade another, or push the model into a doom loop, and the evals were the only way to see that happening across the whole suite instead of just the question in front of me.
 
 Three other results are worth a closer look.
 
 **Hybrid search.** Is hybrid search actually better than plain vector search? It turns out the answer is yes, though the evals originally indicated it was not. I was surprised by this, so I investigated further and found that it was a LangChain bug: [langchain-ai/langchain-postgres#288](https://github.com/langchain-ai/langchain-postgres/issues/288). After working around the bug, the evals showed that hybrid search was indeed better than vector search alone, at least for this use case.
 
-**Sampling parameters.** The main defense against doom loops is tuning sampling parameters, but those parameters also affect answer quality, so this was a search for a configuration that suppresses runaway generations without degrading correctness or inhibiting accurate quoting from the context. The evals made it possible to search over a grid of sampling parameters and find a configuration that worked well. I've had to do this multiple times as I switched models and providers, and each time the evals made it possible to find a good configuration quickly.
+**Sampling parameters.** The main defense against doom loops is tuning sampling parameters, but those parameters also affect answer quality, so this was a search for a configuration that suppresses runaway generations without degrading correctness or inhibiting accurate quoting from the context. The evals made it possible to search over a grid of sampling parameters and measure, rather than guess, which configuration actually worked best. I've had to do this multiple times as I switched models and providers, and each time the evals made it possible to find a good configuration quickly.
 
 **Self-consistency.** The most involved experiments compared different self-consistency approaches. The evals crowned a winner here too. I'll come back to why that turned out to be a problem.
 
-## Evals as insurance
-
-While I was pushing Boardbarian into production, Atlas Cloud—my inference provider at the time—dropped support for Qwen3 30B A3B Instruct, the model I was using. I discovered the change when production API calls began failing. By then, I had spent months making and testing changes against that model. It was not an ideal situation, but the evals let me evaluate replacements with some confidence that they would actually work.
-
-I swapped in Qwen3.6 35B A3B, which appeared to be the most reliable replacement available. Because I was replacing an instruct model, I disabled thinking on the new model to make its behavior more closely resemble the old one. I then reran the search over combinations of sampling parameters and the full eval suite before putting the new model into service.
-
-The sudden deprecation was annoying, but the evals let me find and validate a replacement quickly.
-
 ## When the judge lies
 
-When I started the project, one of the first things I did was hand-roll an LLM judge for grading rule answers. It earned a fair amount of trust by helping me evaluate chunking, embedding, and search approaches. I became quite confident in how well it worked. As it turns out, I was overdue for a lesson in humility.
+When I started the project, one of the first things I did was hand-roll an LLM judge for grading rule answers, and validate it against 21 *Munchkin* question-and-answer pairs I'd graded myself. It earned a fair amount of trust by helping me evaluate chunking, embedding, and search approaches. I became quite confident in how well it worked. As it turns out, I was overdue for a lesson in humility.
 
 Boardbarian used to use something called self-consistency. This is a technique first described in [Self-Consistency Improves Chain of Thought Reasoning in Language Models (Wang et al., 2023)](https://arxiv.org/abs/2203.11171). The idea is that instead of asking the model to answer a question once, you sample an answer multiple times and then pick the answer that appears most frequently. The hope is that this will reduce the impact of any single bad answer and improve overall accuracy. For my use case, which involved open-ended questions, the challenge was figuring out how to determine what the most frequent answer was, since answers could vary in wording while conveying the same meaning. I compared several methods using the eval system and my custom LLM judge.
 
@@ -136,29 +128,35 @@ What I'd sometimes get is something like the following:
 
 The LLM judge would mark both answers as correct, even though the second answer is verbose and contradicts itself. It says a Hireling can be played "whenever it is legal to play a Class or Race card," which is incorrect, but then later says "you can play them at any time," which is correct.
 
-After inspecting the sampled answers used in self-consistency, I found that the n-gram approach tended to favor sampled answers that were more verbose (this is a side effect of the math involved), whereas the dense embedding approach had no such bias. The more verbose answers were more likely to contain hallucinations (longer answers create more opportunities for hallucinations). But then why did the evals indicate that the n-gram approach was just as good as the dense embedding approach?
+After inspecting the sampled answers used in self-consistency, I found that the n-gram approach tended to favor sampled answers that were more verbose (longer answers fill out more of the n-gram vector, giving them more potential for a large dot product when scoring similarity), whereas the dense embedding approach had no such bias. The more verbose answers were more likely to contain hallucinations (longer answers create more opportunities for hallucinations). But then why did the evals indicate that the n-gram approach was just as good as the dense embedding approach?
 
-Fundamentally, the LLM judge was not grading answers in the way I intended. It was checking for the presence of correct information, but not for self-contradiction or the presence of incorrect information. This problem had always been there, but the use of the n-gram approach, with its bias towards longer answers, exposed it. This didn't necessarily mean the n-gram approach was worse (it was much faster than using dense embeddings), but it meant I no longer had reliable evidence that the n-gram approach preserved answer quality.
+Fundamentally, the LLM judge was not grading answers in the way I intended. It was checking for the presence of correct information, but not for self-contradiction or the presence of incorrect information. This blind spot had always been there. The validation set I built when I first stood up the judge never tested for it either: none of the examples in it were self-contradictory or padded with extra false claims, so there was nothing there to expose the gap. The use of the n-gram approach, which favors longer answers, exposed the problem. I would have caught it sooner had I been spot-checking the results regularly. This didn't necessarily mean the n-gram approach was worse (it was much faster than using dense embeddings), but it meant I no longer had reliable evidence that the n-gram approach preserved answer quality.
 
 After all the confounding answers I’d received to board game questions, like the Grail Knights example above, I should have treated the LLM judge’s verdicts with more skepticism. Alas, the judge graded answers with the same misplaced confidence that Boardbarian brought to generating them.
 
-When outputs are ultimately intended for human readers, an LLM judge can be a useful way to save time. However, its grading must be checked regularly against human expectations. In this case, I had assumed that the LLM judge was grading answers in a way that aligned with my expectations, but it was not. This misalignment led me to make a change that the evidence did not actually justify.
+I don't use self-consistency in Boardbarian anymore (it does improve answer quality, but not enough to justify the cost), and I replaced the hand-rolled LLM judge with one built on DeepEval's G-Eval implementation. I retested it against the same contradiction cases, and the problem was gone. I also make it a point to spot-check the results of the eval system on a regular basis. That's how I first noticed runaway generations: some answers were taking noticeably longer than others to come back. I already knew from experience that small models have a tendency to doom loop, so I suspected that was the cause, and the transcripts confirmed it. I added a dedicated metric to track it after that.
 
-I don't use self-consistency in Boardbarian anymore (it does improve answer quality, but not enough to justify the cost), and I replaced the hand-rolled LLM judge with one built on DeepEval's G-Eval implementation. I don't actually know why it handles these cases better. It may be something inherent to G-Eval’s approach, or it may simply be that I wrote a better rubric the second time around. Before trusting it, I ran the same contradiction cases through it, and it caught what the old judge missed. I also make it a point to spot-check the results of the eval system on a regular basis. That's how I first noticed runaway generations: some answers were taking noticeably longer than others to come back. I already knew from experience that small models have a tendency to doom loop, so I suspected that was the cause, and the transcripts confirmed it. I added a dedicated metric to track it after that.
+Did the judge's bias invalidate my earlier results? It may well have, and after the discovery I went back and reviewed my previous conclusions. Mostly, though, the question is moot: much of how Boardbarian works has changed since those experiments. The larger lesson is that an LLM judge buys you breadth and speed: more test cases, checked faster, than I could ever manage by hand. It doesn't get you out of spot-checking the results yourself. That part doesn't go away.
 
-Did the judge's bias invalidate my earlier results? It may well have, and after the discovery I went back and reviewed my previous conclusions. Mostly, though, the question is moot: much of how Boardbarian works has changed since those experiments, and with a better judge and regular spot checks, the current state of the system is well supported by the current evals.
+## Evals as insurance
+
+While I was pushing Boardbarian into production, Atlas Cloud, my inference provider at the time, dropped support for Qwen3 30B A3B Instruct, the model I was using. I discovered the change when production API calls began failing. By then, I had spent months making and testing changes against that model. It was not an ideal situation, but the evals let me evaluate replacements with some confidence that they would actually work.
+
+I swapped in Qwen3.6 35B A3B, which appeared to be the most reliable replacement available. Because I was replacing an instruct model, I disabled thinking on the new model to make its behavior more closely resemble the old one. I then reran the search over combinations of sampling parameters and the full eval suite before putting the new model into service.
+
+The sudden deprecation was annoying, but the evals let me find and validate a replacement quickly.
 
 ## Conclusion
 
 At the end of the first post, I asked: how do I know any of this works? Here is what the evals currently show across the games *Warhammer Fantasy Battle*, *Munchkin*, and *Oathsworn*:
 
-| Game | Unique Questions | Correctly Answered | Quote Validity | Non-Runaway Generations |
+| Game | Questions | Correct Runs | Quote Validity | Runaway-Free Runs |
 | -------- | -------- | -------- | -------- | -------- |
-| *Warhammer Fantasy Battle* | 5 | 84% | 96% | 100% |
-| *Munchkin*    | 20   | 96%   | 99% | 100% |
-| *Oathsworn*   | 5   | 100%   | 98% | 100% |
+| *Warhammer Fantasy Battle* | 5 | 21/25 | 96% | 25/25 |
+| *Munchkin*    | 20   | 96/100   | 99% | 100/100 |
+| *Oathsworn*   | 5   | 25/25   | 98% | 25/25 |
 
-The scores are averaged across all five runs of each question. The "Correctly Answered" column is the percentage of runs that the system answered correctly, as judged by the LLM judge. "Quote Validity" is the percentage of generated quotes that passed validation on the first attempt, before the repair loop ran. "Non-Runaway Generations" is the percentage of runs that did not result in a runaway generation.
+Each question runs five times. "Correct Runs" and "Runaway-Free Runs" show how many of those runs, out of the total for that game, met the bar (Warhammer's 21/25, for instance, means 5 questions run 5 times each, with 21 of those 25 runs judged correct). "Quote Validity" is the percentage of generated quotes that passed validation on the first attempt, before the repair loop ran.
 
 Because I use the *Warhammer* and *Munchkin* questions during development, those results may be inflated by repeated development against the same questions; the held-out *Oathsworn* set is the closest thing here to an honest estimate. These are still small test sets, especially *Warhammer* and *Oathsworn*, so treat the percentages as directional rather than precise.
 
@@ -168,7 +166,7 @@ Looking back at the requirements for the eval system:
 
 1. **Meaningful.** The test cases are real rules questions with hand-written expected answers, and the metrics track the failures that actually happen: wrong answers, hallucinated quotes, and runaway generations.
 
-2. **Cheap.** The suite runs against small models, mostly on my homelab, which makes it affordable to run every question multiple times and compare many parameter configurations.
+2. **Cheap.** The suite runs against small models on my own hardware, so a full run costs me electricity, not API calls. That's what makes it affordable to run every question multiple times and compare many parameter configurations.
 
 3. **Trustworthy.** This is the one where I got burned. The LLM judge was the only component of the system I had never evaluated, and it misled me for months. Trust in a judge isn't something you establish once; it has to be re-earned whenever the answers it grades change shape.
 
