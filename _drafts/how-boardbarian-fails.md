@@ -12,7 +12,7 @@ image:
 
 At the end of the [previous post]({% post_url 2026-08-03-how-boardbarian-thinks %}), I asked how I know any of this works. The honest answer starts with failure: getting [Boardbarian](https://boardbarian.com) to a working system meant spending most of my time staring at wrong, sometimes bewildering, answers. This post is about the eval system I built to make sense of that: not just to catch failures, but to tell whether a given change actually helped. The system worked. Except for the LLM judge, which lied to me for months.
 
-Let's return to our example from the last post, from the game *Warhammer Fantasy Battle 5th Edition*: "Do Grail Knights have to take a Break test when they lose a round of combat?" This turns out to be a tricky question. Here's a real answer Boardbarian produced during development:
+Let's return to our example from the last post, from the game *Warhammer Fantasy Battle 5th Edition*: "Do Grail Knights have to take a Break test when they lose a round of combat?" As a refresher, the answer is yes: Grail Knights are immune to psychology tests, but the rulebook explicitly says that a Break test is not a psychology test. Here is Boardbarian making the natural but incorrect assumption that Break tests fall under the umbrella of psychology:
 
 > No, Grail Knights do not need to take Break tests.
 >
@@ -30,7 +30,7 @@ Concise. Straightforward. Confidently wrong. And it’s the kind of answer that 
 > 
 > (Warhammer Rulebook, p. 46)
 
-And if you think this is just a retrieval failure (i.e., the model failing to find the relevant rule in the rulebook), consider yet another gem of an answer to the same question:
+Even when Boardbarian has all the information it needs, it can still fail. In the following answer, it quotes the rule stating that a Break test is not a psychology test, reasons through the distinction correctly, and still reaches the wrong conclusion:
 
 > No, Grail Knights do not need to take Break tests when they suffer casualties or are defeated in combat.
 >
@@ -74,7 +74,7 @@ Failures like those above are why most of my effort has gone into evaluations. D
 
 ## Whack-a-mole
 
-When a failure shows up, the temptation is to fix it directly: adjust the prompt, tweak a sampling parameter, rerun the failing question, and call it fixed. The problem is that every one of these knobs is connected to everything else. Tweaking sampling parameters to resolve runaway generations can degrade quoting accuracy. Rewording the prompt to produce more accurate answers can increase the tendency toward runaway generations. Fix the Grail Knights question, and something you didn't think to recheck quietly breaks.
+When a failure shows up, the temptation is to fix it directly: adjust the prompt, change how the model generates its answer, rerun the failing question, and call it fixed. The problem is that every one of these knobs is connected to everything else. A change that suppresses runaway generations can degrade quoting accuracy. Rewording the prompt to produce more accurate answers can make runaway generations more likely. Fix the Grail Knights question, and something you didn't think to recheck quietly breaks.
 
 Spot-checking is valuable. It's how you notice something is wrong in the first place, and it stays useful even after you've built an automated system, as I'll get to later. But it scales poorly on its own: checking whether a change fixed one issue doesn't tell you if it caused another. To iterate quickly, you need something spot-checking alone can't give you: automated, broad, repeatable coverage.
 
@@ -96,29 +96,29 @@ Because the system is stochastic, some questions produce more variable answers t
 
 ## Evals for design decisions
 
-Once the suite existed, I could treat design choices as experiments. Back when I started, there was a lot of discussion about how to do RAG properly: how big chunks should be, whether chunking should follow the semantic structure of the document, which embedding model to use, whether vector search alone is enough.
+Once the suite existed, I could treat design choices as experiments. Back when I started, there was a lot of discussion about how to do RAG properly: how much text to search at once and how to split documents into passages (chunking), whether to preserve the structure of the document, which model to use for comparing passages by meaning, and whether searching by meaning alone (vector search) was enough.
 
 Most of the advice on offer rested on theoretical arguments or anecdotal experience rather than comparative measurements. These were effectively hyperparameters, so I treated them the usual way: enumerate the options, search over their combinations where necessary, and measure the results.
 
 The point here is not that these settings generalize to other RAG systems, but that the suite let me test them against Boardbarian’s actual workload.
 
-A few of the results were quick wins, all measured against the same suite described above rather than a handful of spot checks. Parent-child chunking, with parent chunks of roughly 500 tokens and child chunks of roughly 125 (roughly, to avoid splitting mid-sentence), performed better than every flat chunk size I tried on this suite. Swapping [jina-embeddings-v2-base-en](https://huggingface.co/jinaai/jina-embeddings-v2-base-en) for the smaller, cheaper [bge-small-en-v1.5](https://huggingface.co/BAAI/bge-small-en-v1.5) showed no measurable loss in accuracy on this suite. Prompt tuning stayed useful throughout: a change that fixed one class of question could easily degrade another or push the model into a doom loop. The evals made those regressions visible across the suite.
+A few of the results were quick wins. Searching over small passages while returning the larger surrounding passage performed better than searching over passages of a single fixed size. Replacing the model used to compare passages by meaning (the embedding model) with a smaller, cheaper alternative showed no measurable loss in accuracy. Prompt tuning stayed useful throughout: a change that fixed one class of question could easily degrade another or push the model into a doom loop. The evals made those regressions visible across the suite.
 
 Three other results are worth a closer look.
 
-**Hybrid search.** Is hybrid search actually better than plain vector search? It turns out the answer is yes, though the evals originally indicated it was not. I was surprised by this, so I investigated further and found that it was a LangChain bug: [langchain-ai/langchain-postgres#288](https://github.com/langchain-ai/langchain-postgres/issues/288). After working around the bug, the evals showed that hybrid search was indeed better than vector search alone, at least for this use case.
+**Hybrid search.** Is combining search by meaning with search for exact wording actually better than searching by meaning alone? It turns out the answer is yes, though the evals originally indicated otherwise. I was surprised by this, so I investigated and found a LangChain bug: [langchain-ai/langchain-postgres#288](https://github.com/langchain-ai/langchain-postgres/issues/288). After working around it, the evals showed that the combined approach performed better, at least for this use case.
 
-**Sampling parameters.** The main defense against doom loops is tuning sampling parameters, but those parameters also affect answer quality, so this was a search for a configuration that suppresses runaway generations without degrading correctness or inhibiting accurate quoting from the context. The evals made it possible to search over a grid of sampling parameters and measure, rather than guess, which configuration actually worked best. I've had to do this multiple times as I switched models and providers, and each time the evals made it possible to find a good configuration quickly.
+**Sampling parameters.** When a model generates text, it assigns probabilities to the possible next tokens, roughly words or pieces of words. Sampling parameters control how the model chooses among them. These settings are the main defense against doom loops, but they also affect answer quality, so I needed a configuration that suppressed runaway generations without degrading correctness or accurate quoting. The evals let me search over combinations and measure which one worked best. I repeated that search whenever I switched models or inference providers (the services running the models).
 
-**Self-consistency.** The most involved experiments compared different self-consistency approaches. The evals crowned a winner here too. I'll come back to why that turned out to be a problem.
+**Self-consistency.** The most involved experiments compared ways of generating several answers to the same question and selecting the consensus answer. The evals crowned a winner here too. I'll come back to why that turned out to be a problem.
 
 ## When the judge lies
 
 When I started the project, one of the first things I did was hand-roll an LLM judge for grading rule answers, and validate it against 21 *Munchkin* question-and-answer pairs I'd graded myself. It earned a fair amount of trust by helping me evaluate chunking, embedding, and search approaches. I became quite confident in how well it worked. As it turns out, I was overdue for a lesson in humility.
 
-Boardbarian used to use something called self-consistency. This is a technique first described in [Self-Consistency Improves Chain of Thought Reasoning in Language Models (Wang et al., 2023)](https://arxiv.org/abs/2203.11171). The idea is that instead of asking the model to answer a question once, you sample an answer multiple times and then pick the answer that appears most frequently. The hope is that this will reduce the impact of any single bad answer and improve overall accuracy. For my use case, which involved open-ended questions, the challenge was figuring out how to determine what the most frequent answer was, since answers could vary in wording while conveying the same meaning. I compared several methods using the eval system and my custom LLM judge.
+Boardbarian used to use self-consistency, a technique first described in [Self-Consistency Improves Chain of Thought Reasoning in Language Models (Wang et al., 2023)](https://arxiv.org/abs/2203.11171). Selecting from several sampled answers can reduce the impact of any single bad answer and improve overall accuracy. For my use case, the challenge was determining which answer represented the consensus, since open-ended answers could vary in wording while conveying the same meaning. I compared several methods using the eval system and my custom LLM judge.
 
-Originally, I'd settled on an approach that used dense embeddings to find the consensus answer, but when I compared it to an approach from Amazon, described in [Lightweight reranking for language model generations (Jain et al., 2023)](https://arxiv.org/abs/2307.06857), that used sparse n-gram vectors, the evals indicated that the Amazon approach was basically as effective while being cheaper and faster. Consequently, I switched my approach.
+Originally, I'd settled on an approach that compared answers by meaning using dense embeddings. I later compared it to an approach from Amazon, described in [Lightweight reranking for language model generations (Jain et al., 2023)](https://arxiv.org/abs/2307.06857), that compared shared words and short phrases using sparse n-gram vectors. The evals indicated that the Amazon approach was basically as effective while being cheaper and faster, so I switched.
 
 Much later, and sadly I do mean much later, I began to feel, while using Boardbarian, that the answers were often self-contradictory. For example, for the game *Munchkin*, I'd ask the question: "When can I play a Hireling?" The answer I would expect is:
 
@@ -130,7 +130,7 @@ What I'd sometimes get is something like the following:
 
 The LLM judge would mark both answers as correct, even though the second answer is verbose and contradicts itself. It says a Hireling can be played "whenever it is legal to play a Class or Race card," which is incorrect, but then later says "you can play them at any time," which is correct.
 
-After inspecting the sampled answers used in self-consistency, I found that the n-gram approach tended to favor sampled answers that were more verbose (longer answers fill out more of the n-gram vector, giving them more potential for a large dot product when scoring similarity), whereas the dense embedding approach had no such bias. The more verbose answers were more likely to contain incorrect claims, in part because they made more claims. But then why did the evals indicate that the n-gram approach was just as good as the dense embedding approach?
+After inspecting the sampled answers used in self-consistency, I found that the n-gram approach tended to favor more verbose answers. It scores answers based on how many words and short phrases they share with the other samples. Longer answers have more opportunities to contain matching language and earn a higher score, whereas the dense embedding approach had no such bias. The more verbose answers were also more likely to contain incorrect claims, in part because they made more claims. But then why did the evals indicate that the n-gram approach was just as good as the dense embedding approach?
 
 Fundamentally, the LLM judge was not grading answers in the way I intended. It was checking for the presence of correct information, but not for self-contradiction or the presence of incorrect information. This blind spot had always been there. The validation set I built when I first stood up the judge never tested for it either: none of the examples in it were self-contradictory or padded with extra false claims, so there was nothing there to expose the gap. The use of the n-gram approach, which favors longer answers, exposed the problem. I would have caught it sooner had I been spot-checking the results regularly. This didn't necessarily mean the n-gram approach was worse (it was much faster than using dense embeddings), but it meant I no longer had reliable evidence that the n-gram approach preserved answer quality.
 
