@@ -74,7 +74,7 @@ Failures like those above are why most of my effort has gone into evaluations. D
 
 ## Whack-a-mole
 
-When a failure shows up, the temptation is to fix it directly: adjust the prompt, change how the model generates its answer, rerun the failing question, and call it fixed. The problem is that every one of these knobs is connected to everything else. A change that suppresses runaway generations can degrade quoting accuracy. Rewording the prompt to produce more accurate answers can make runaway generations more likely. Fix the Grail Knights question, and something you didn't think to recheck quietly breaks.
+When a failure shows up, the temptation is to fix it directly: adjust the prompt, change how the model generates its answer, rerun the failing question, and call it fixed. The problem is that every one of these knobs is connected to everything else. A change that suppresses runaway generations can degrade quoting accuracy. Rewording the prompt to produce more accurate answers can make runaway generations more likely. Fix the Grail Knights question, and something you didn't think to recheck breaks.
 
 Spot-checking is valuable. It's how you notice something is wrong in the first place, and it stays useful even after you've built an automated system, as I'll get to later. But it scales poorly on its own: checking whether a change fixed one issue doesn't tell you if it caused another. To iterate quickly, you need something spot-checking alone can't give you: automated, broad, repeatable coverage.
 
