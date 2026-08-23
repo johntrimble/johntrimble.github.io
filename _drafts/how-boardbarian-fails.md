@@ -175,6 +175,6 @@ Looking back at the requirements for the eval system:
 
 3. **Trustworthy.** This is the one where I got burned. I had validated the original LLM judge, but its validation set did not include self-contradictory answers or answers padded with false claims. The judge misled me for months because its test set did not evolve as the answers it graded changed shape. Trust in a judge is not something you establish once; its own evaluations need to keep pace with the system it evaluates.
 
-Boardbarian still fails. But no change ships without evidence, across the whole suite, that it fixed more than it broke. Regular spot-checking tells me when the suite itself needs to change. That combination of measurement and skepticism, more than any single design decision, is what the project runs on.
+Boardbarian still fails. No change ships without evidence from the whole suite that it fixed more than it broke. That evidence is never exempt from scrutiny. Regular spot-checking tells me when the suite itself needs to change. That combination of measurement and skepticism, more than any single design decision, is what the project runs on.
 
 Next up is the system design: the infrastructure that runs these workflows and serves answers cheaply.
