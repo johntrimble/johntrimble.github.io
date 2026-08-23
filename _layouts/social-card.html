@@ -1,0 +1,144 @@
+---
+---
+
+{%- comment -%}
+  Standalone layout for generating a 1080x1350 LinkedIn share image for a post.
+
+  Not part of the normal site: only reachable via a page in the `social_cards`
+  collection, which only exists when building with the merged
+  `_config.yml,_config.social.yml` config (see tools/social-image.sh). Deliberately
+  does not inherit `default`/`compress` (sidebar/topbar/TOC/footer chrome) — it links
+  the real compiled theme stylesheet so colors/fonts match the site, then lays out a
+  fixed-size card with its own minimal CSS.
+
+  Typography note: sizes are scaled up for a 1080px canvas, but font-family and
+  font-weight are deliberately NOT overridden — the theme's own `h1` rule
+  (%heading: Lato 400, var(--heading-color)) and body font (Source Sans Pro) apply,
+  so the card matches the real post page. Lato is only loaded at weights 300/400
+  (see _data/origin/cors.yml), so do not set a bold weight on the title: it would
+  render as faux bold.
+{%- endcomment -%}
+
+{% include origin-type.html %}
+
+{% assign post = site.posts | where: "slug", page.target_slug | first %}
+{% assign mode = page.card_mode | default: "dark" %}
+
+<!doctype html>
+<html lang="{{ site.lang }}" data-mode="{{ mode }}">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="{{ '/assets/css/:THEME.css' | replace: ':THEME', site.theme | relative_url }}">
+  <link rel="stylesheet" href="{{ site.data.origin[type].webfonts | relative_url }}">
+  <style>
+    * { box-sizing: border-box; }
+
+    /* Width is fixed at 1080; height is whatever the content needs, capped at
+       1350 (LinkedIn's tallest supported portrait, 4:5). The screenshot script
+       reads the rendered card height and sizes the viewport to match, so a short
+       opening paragraph yields a shorter image rather than a trailing gap. */
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 1080px;
+      background: var(--main-bg);
+    }
+
+    .card {
+      width: 1080px;
+      max-height: 1350px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Shown at its natural aspect ratio so the artwork is never cropped — the
+       same full image the post page shows. */
+    .card-image {
+      flex: none;
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .card-body {
+      flex: none;
+      padding: 56px 64px 0;
+    }
+
+    .card-title {
+      font-size: 66px;
+      line-height: 1.2;
+      margin: 0 0 28px;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 3;
+      overflow: hidden;
+    }
+
+    /* 32px/1.75 gives 56px lines, so 9 lines (504px) fit the space left below the
+       title. Sized so a typical opening paragraph lands complete rather than
+       ellipsized; the line-clamp is the backstop for unusually long ones. */
+    .card-excerpt {
+      color: var(--text-color);
+      font-size: 32px;
+      line-height: 1.75;
+      margin: 0;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 9;
+      overflow: hidden;
+    }
+
+    .card-footer {
+      flex: none;
+      padding: 44px 64px 52px;
+      color: var(--text-muted-color);
+      font-size: 28px;
+    }
+  </style>
+</head>
+<body>
+  {% if post %}
+    <div class="card">
+      {% if post.image %}
+        {% assign img_src = post.image.path | default: post.image %}
+        {% capture img_src %}{% include media-url.html src=img_src subpath=post.media_subpath %}{% endcapture %}
+        <img class="card-image" src="{{ img_src }}" alt="">
+      {% endif %}
+
+      <div class="card-body">
+        <h1 class="card-title">{{ post.title }}</h1>
+        {%- comment -%}
+          Use only the post's opening paragraph as the teaser. post-description.html
+          isn't reusable here: it flattens the whole post body into one string, so
+          there's no paragraph boundary left to cut on and a longer excerpt would
+          bleed into the second paragraph. Same heading-stripping approach it uses
+          (so the "Introduction" heading doesn't lead the text), then take the
+          content up to the first paragraph close.
+        {%- endcomment -%}
+        {%- assign body_html = post.content | markdownify -%}
+        {%- assign heading_tags = 'h1,h2,h3,h4' | split: ',' -%}
+        {%- for tag in heading_tags -%}
+          {%- assign open_tag = '<' | append: tag -%}
+          {%- assign close_tag = '</' | append: tag | append: '>' -%}
+          {%- assign parts = body_html | split: close_tag -%}
+          {%- capture body_html -%}
+            {%- for part in parts -%}{{ part | split: open_tag | first }}{%- endfor -%}
+          {%- endcapture -%}
+        {%- endfor -%}
+        {%- assign excerpt = body_html | split: '</p>' | first | strip_html | strip -%}
+        <p class="card-excerpt">{{ excerpt | escape | truncatewords: 130 }}</p>
+      </div>
+
+      <div class="card-footer">{{ site.url | remove_first: "https://" | remove_first: "http://" }}</div>
+    </div>
+  {% else %}
+    <div class="card">
+      <div class="card-body">
+        <h1 class="card-title">No post found for slug "{{ page.target_slug }}"</h1>
+      </div>
+    </div>
+  {% endif %}
+</body>
+</html>

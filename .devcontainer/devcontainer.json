@@ -14,7 +14,8 @@
 	// 	}
 	// },
 	"mounts": [
-        "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,readonly"
+        "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,readonly",
+        "source=johntrimble-io-playwright-browsers,target=/home/vscode/.cache/ms-playwright,type=volume"
 	],
 
 	// Features to add to the dev container. More info: https://containers.dev/features.
@@ -28,8 +29,13 @@
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
 	// "forwardPorts": [],
 
-	// Uncomment the next line to run commands after the container is created.
-	// "postCreateCommand": "jekyll --version"
+	// Sets up the Playwright browser toolkit used by the .claude/skills/webapp-testing
+	// skill: a project-local Python venv, the playwright pip package, and headless
+	// Chromium (+ its OS-level libs, via --with-deps). Re-runs on every container
+	// rebuild since none of this is baked into the base image. The Chromium download
+	// itself is cached in the "johntrimble-io-playwright-browsers" volume above, so
+	// rebuilds don't re-fetch it unless the pinned playwright version changes.
+	"postCreateCommand": "sudo apt-get update && sudo apt-get install -y python3-venv && sudo mkdir -p /home/vscode/.cache/ms-playwright && sudo chown -R vscode:vscode /home/vscode/.cache/ms-playwright && python3 -m venv .venv-playwright && .venv-playwright/bin/pip install --upgrade pip -r requirements-playwright.txt && .venv-playwright/bin/playwright install --with-deps chromium",
 
 	// Configure tool-specific properties.
 	"customizations": {

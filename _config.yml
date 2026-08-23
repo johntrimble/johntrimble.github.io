@@ -222,6 +222,10 @@ exclude:
   - "medium_output"
   - "convert_to_medium"
   - "reference_repositories"
+  - "_config.social.yml"
+  # Generated LinkedIn share images. Tracked in git as a record of what was
+  # posted, but never published as part of the site.
+  - "social-cards"
 
 jekyll-archives:
   enabled: [categories, tags]

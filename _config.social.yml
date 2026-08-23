@@ -1,0 +1,9 @@
+# Secondary config, merged in only for generating LinkedIn social-card images:
+#   bundle exec jekyll build --config _config.yml,_config.social.yml --drafts -d _site_social
+#
+# Declares the `social_cards` collection used by tools/social-image.sh. This file is
+# intentionally NEVER passed to the dev server, tools/test.sh, or the GitHub Actions
+# deploy workflow, so the collection it defines cannot appear in a real build of the site.
+collections:
+  social_cards:
+    output: true

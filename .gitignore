@@ -7,4 +7,7 @@ vendor
 .gitkeep
 __pycache__
 *.pyc
+.venv-playwright
 .vscode
+_site_social
+reference_repositories
