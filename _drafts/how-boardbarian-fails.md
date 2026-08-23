@@ -60,7 +60,7 @@ Even when Boardbarian has all the information it needs, it can still fail. In th
 >
 > **Final Answer: No, Grail Knights do not need to take Break tests when they suffer casualties or are defeated in combat.**
 
-Incredible. Resolving problems like these took more than poking at prompts and parameters one question at a time; it took a way to measure the system’s performance across a wide range of questions, not just the one in front of me. This is where the evaluation system comes in: it lets me see where Boardbarian fails, and measure whether a change improves or degrades performance across a whole suite of questions.
+Incredible. Resolving problems like these took more than poking at prompts and parameters one question at a time; it took a way to measure the system's performance across a wide range of questions and understand the broader effects of my changes. This is where the evaluation system comes in: it lets me see where Boardbarian fails, and measure whether a change improves or degrades performance across a whole suite of questions.
 
 
 ## Requirements
@@ -68,7 +68,7 @@ Incredible. Resolving problems like these took more than poking at prompts and p
 Failures like those above are why most of my effort has gone into evaluations. Debugging them one at a time by hand doesn't scale, so early on I invested in an automated eval system with these requirements:
 
 1. **Meaningful.** It has to catch real failures on real questions. Real questions carry all the game-specific vocabulary, meta-rules, and multi-hop retrieval the first post described.
-2. **Cheap.** I run lots of experiments, mostly on my homelab, so a full eval run has to be affordable enough to repeat constantly.
+2. **Cheap.** I run lots of experiments, so a full eval run has to be affordable enough to repeat constantly.
 3. **Trustworthy.** When the evals say one approach beats another, that verdict has to be one I can act on.
 
 
@@ -89,7 +89,7 @@ Boardbarian fails in three recurring ways, and the eval system has a metric for 
 
 3. **Never finishing.** The evals track runaway generations, in which the model gets stuck in a loop and generates until it hits the token limit. I first noticed these because some answers were taking noticeably longer than others to come back. Small models have a tendency to doom loop, so I suspected that was the cause, and the transcripts confirmed it. I added a dedicated metric to track it after that.
 
-The test cases are real rules questions paired with hand-written expected answers. The suite currently contains 30 questions across three games: five for *Warhammer Fantasy Battle*, twenty for *Munchkin*, and five for *Oathsworn*. I use the *Warhammer* and *Munchkin* questions as a development set. The five *Oathsworn* questions form a small held-out evaluation set: neither the questions nor their results influenced development of the version evaluated here. If I begin using those results to guide later changes, I will need to evaluate those changes against new, previously unseen questions.
+The test cases are real rules questions paired with hand-written expected answers. The suite currently contains 30 questions across three games: five for *Warhammer Fantasy Battle*, twenty for *Munchkin*, and five for *Oathsworn*. I use the *Warhammer* and *Munchkin* questions as a development set, whose results I consult while comparing approaches and tuning the system. The five *Oathsworn* questions form a small held-out evaluation set; neither the questions nor their results influenced development of the version evaluated here. Keeping the sets separate gives me a check on whether improvements carry over to questions I did not tune against. If I begin using the *Oathsworn* results to guide later changes, I will need to evaluate those changes against new, previously unseen questions.
 
 Because the system is stochastic, some questions produce more variable answers than others. I therefore run each question five times per experiment to measure how reliably the system answers it correctly. All of this runs against small models, mostly on my homelab, which is what keeps a full suite run cheap enough to repeat throughout development.
 
@@ -129,9 +129,9 @@ When I started the project, one of the first things I did was hand-roll an LLM j
 
 Boardbarian used to use self-consistency, a technique first described in [Self-Consistency Improves Chain of Thought Reasoning in Language Models (Wang et al., 2023)](https://arxiv.org/abs/2203.11171). The technique only helps if Boardbarian can identify the consensus among the multiple answers it generates for the same question. That is not straightforward for open-ended questions, since answers can vary in wording while conveying the same meaning. I compared several selection methods using the eval system and my custom LLM judge.
 
-Originally, I'd settled on an approach that compared answers by meaning using dense embeddings. I later compared it to an approach from Amazon, described in [Lightweight reranking for language model generations (Jain et al., 2023)](https://arxiv.org/abs/2307.06857), that compared shared words and short phrases using sparse n-gram vectors. The evals indicated that the Amazon approach was basically as effective while being cheaper and faster, so I switched.
+Originally, I'd settled on an approach that used dense embeddings, numerical representations of each answer's meaning, to select the answer most similar to the other samples. I later compared it to an approach from Amazon, described in [Lightweight reranking for language model generations (Jain et al., 2023)](https://arxiv.org/abs/2307.06857), that compared shared words and short phrases using sparse n-gram vectors. The evals indicated that the Amazon approach was basically as effective while being cheaper and faster, so I switched.
 
-Much later, and sadly I do mean much later, I began to feel, while using Boardbarian, that the answers were often self-contradictory. For example, for the game *Munchkin*, I'd ask the question: "When can I play a Hireling?" The answer I would expect is:
+Much later, and sadly I mean months later, I began to feel, while using Boardbarian, that the answers often mixed correct and incorrect claims, sometimes contradicting themselves. For example, for the game *Munchkin*, I'd ask the question: "When can I play a Hireling?" The answer I would expect is:
 
 > You can play a Hireling at any time. However, you can only have one Hireling in play at a time.
 
@@ -147,7 +147,7 @@ Fundamentally, the LLM judge was not grading answers in the way I intended. It w
 
 After all the confounding answers I’d received to board game questions, like the Grail Knights example above, I should have treated the LLM judge’s verdicts with more skepticism. Alas, the judge graded answers with the same misplaced confidence that Boardbarian brought to generating them.
 
-I don't use self-consistency in Boardbarian anymore (it does improve answer quality, but not enough to justify the cost), and I replaced the hand-rolled LLM judge with one built on DeepEval's G-Eval implementation. I retested it against the same contradiction cases, and it rejected them correctly. I also make it a point to spot-check the results of the eval system regularly.
+I don't use self-consistency in Boardbarian anymore (it does improve answer quality, but not enough to justify the cost), and I replaced the hand-rolled LLM judge with one built on DeepEval's G-Eval implementation. I retested it against the same contradiction cases, and it rejected them correctly. Since then, I've made it a point to spot-check the eval system's results regularly.
 
 Did the judge's bias invalidate my earlier results? It may well have, and after the discovery I went back and reviewed my previous conclusions. Mostly, though, the question is moot: much of how Boardbarian works has changed since those experiments. The larger lesson is that an LLM judge buys you breadth and speed: more test cases, checked faster, than I could ever manage by hand. But automated evals are best at catching failures you have already taught them to recognize. Spot-checking is how I find the ones I have not.
 
@@ -163,7 +163,7 @@ At the end of the first post, I asked: how do I know any of this works? The numb
 
 Each question runs five times. "Correct Runs" and "Runaway-Free Runs" show how many of those runs, out of the total for that game, met the bar (Warhammer's 21/25, for instance, means 5 questions run 5 times each, with 21 of those 25 runs judged correct). "Quote Validity" is the percentage of individual generated quotes that passed validation on the first attempt, before the repair loop ran.
 
-Because I use the *Warhammer* and *Munchkin* questions as a development set, those results may be inflated by repeated development against the same questions; the held-out *Oathsworn* set is the closest thing here to an honest estimate. These are still small evaluation sets, especially *Warhammer* and *Oathsworn*, so treat the percentages as directional rather than precise.
+Because I use the *Warhammer* and *Munchkin* questions as a development set, those results may be inflated by repeated development against the same questions; the held-out *Oathsworn* set is the closest thing here to an honest estimate. These are still small question sets, especially *Warhammer* and *Oathsworn*, so treat the percentages as directional rather than precise.
 
 The honest caveat is that this is performance on my questions. I don't yet have much production data, and I don't yet run the evals against what I do have; when Boardbarian fails in production today, I mostly don't know it. Closing that gap is the obvious next step, and seeing how Boardbarian holds up against the questions actual players ask will doubtless lead to further refinements of the evals and the test cases. If you want to help with that, [Boardbarian](https://boardbarian.com) is live: bring it your gnarliest rules question and see if it holds up.
 
@@ -173,7 +173,7 @@ Looking back at the requirements for the eval system:
 
 2. **Cheap.** The suite runs against small models on my own hardware, so a full run costs me electricity, not API calls. That's what makes it affordable to run every question multiple times and compare many parameter configurations.
 
-3. **Trustworthy.** This is the one where I got burned. I had validated the original LLM judge, but its validation set did not include self-contradictory answers or answers padded with false claims. The judge misled me for months because its test set did not evolve as the answers it graded changed shape. Trust in a judge is not something you establish once; its own evaluations need to keep pace with the system it evaluates.
+3. **Trustworthy.** This is the one where I got burned. I had validated the original LLM judge, but its validation set did not include self-contradictory answers or answers padded with false claims. The judge misled me for months because its validation set did not evolve as the answers it graded changed shape. Trust in a judge is not something you establish once; the judge's validation needs to keep pace with the system it evaluates.
 
 Boardbarian still fails. No change ships without evidence from the whole suite that it fixed more than it broke. That evidence is never exempt from scrutiny. Regular spot-checking tells me when the suite itself needs to change. That combination of measurement and skepticism, more than any single design decision, is what the project runs on.
 
