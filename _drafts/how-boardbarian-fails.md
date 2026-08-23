@@ -10,7 +10,7 @@ image:
 
 ## Introduction
 
-At the end of the [previous post]({% post_url 2026-08-03-how-boardbarian-thinks %}), I asked how I know any of this works. The honest answer starts with failure: getting [Boardbarian](https://boardbarian.com) to a working system meant spending most of my time staring at wrong, sometimes bewildering, answers. This post is about the eval system I built to make sense of that: not just to catch failures, but to tell whether a given change actually helped. The system worked well enough to earn my trust. Trusting it without spot-checking was a mistake: its LLM judge lied to me for months.
+At the end of the [previous post]({% post_url 2026-08-03-how-boardbarian-thinks %}), I asked how I know any of this works. The honest answer starts with failure. Getting [Boardbarian](https://boardbarian.com) working meant spending most of my time staring at wrong, often bewildering, answers. This post describes the eval system I built to catch those failures and drive development. It's also a cautionary tale about trusting automated results without spot-checking them. The LLM judge I built lied to me for months.
 
 Let's return to our example from the last post, from the game *Warhammer Fantasy Battle 5th Edition*: "Do Grail Knights have to take a Break test when they lose a round of combat?" As a refresher, the answer is yes: Grail Knights are immune to psychology tests, but the rulebook explicitly says that a Break test is not a psychology test. Here is Boardbarian making the natural but incorrect assumption that Break tests fall under the umbrella of psychology:
 
