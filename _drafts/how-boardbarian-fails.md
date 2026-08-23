@@ -91,7 +91,18 @@ Boardbarian fails in three recurring ways, and the eval system has a metric for 
 
 The test cases are real rules questions paired with hand-written expected answers. The suite currently contains 30 questions across three games: five for *Warhammer Fantasy Battle*, twenty for *Munchkin*, and five for *Oathsworn*. I use the *Warhammer* and *Munchkin* questions as a development set. The five *Oathsworn* questions form a small held-out evaluation set: neither the questions nor their results influenced development of the version evaluated here. If I begin using those results to guide later changes, I will need to evaluate those changes against new, previously unseen questions.
 
-Because the system is stochastic, some questions produce more variable answers than others. I therefore run each question five times per experiment to measure how reliably the system answers it correctly. All of this runs against small models, mostly on my homelab, which is what keeps a full suite run cheap enough to repeat for every experiment in the next section.
+Because the system is stochastic, some questions produce more variable answers than others. I therefore run each question five times per experiment to measure how reliably the system answers it correctly. All of this runs against small models, mostly on my homelab, which is what keeps a full suite run cheap enough to repeat throughout development.
+
+
+## Evals as insurance
+
+Evals were not only a development tool; they also gave me a migration path when a production dependency disappeared.
+
+While I was pushing Boardbarian into production, Atlas Cloud, my inference provider at the time (a third-party service that hosted the model and provided API access to it), dropped support for Qwen3 30B A3B Instruct, the model I was using. I discovered the change when production API calls began failing. By then, I had spent months making and testing changes against that model. It was not an ideal situation, but the evals let me evaluate replacements with some confidence that they would actually work.
+
+I swapped in Qwen3.6 35B A3B, which appeared to be the most reliable replacement available. Because I was replacing an instruct model, I disabled thinking on the new model to make its behavior more closely resemble the old one. I then retuned how the model generated text and reran the full eval suite before putting the new model into service.
+
+The sudden deprecation was annoying, but the evals let me find and validate a replacement quickly.
 
 
 ## Evals for design decisions
@@ -108,9 +119,9 @@ Three other results are worth a closer look.
 
 **Hybrid search.** Is combining search by meaning with search for exact wording actually better than searching by meaning alone? It turns out the answer is yes, though the evals originally indicated otherwise. I was surprised by this, so I investigated and found a LangChain bug: [langchain-ai/langchain-postgres#288](https://github.com/langchain-ai/langchain-postgres/issues/288). After working around it, the evals showed that the combined approach performed better, at least for this use case.
 
-**Sampling parameters.** When a model generates text, it assigns probabilities to the possible next tokens, roughly words or pieces of words. Sampling parameters control how the model chooses among them. These settings are the main defense against doom loops, but they also affect answer quality, so I needed a configuration that suppressed runaway generations without degrading correctness or accurate quoting. The evals let me search over combinations and measure which one worked best. I repeated that search whenever I switched models or inference providers (third-party services that host language models and provide access to them through an API).
+**Sampling parameters.** When a model generates text, it assigns probabilities to the possible next tokens, roughly words or pieces of words. Sampling parameters control how the model chooses among them. These settings are the main defense against doom loops, but they also affect answer quality, so I needed a configuration that suppressed runaway generations without degrading correctness or accurate quoting. The evals let me search over combinations and measure which one worked best. I repeated that search whenever I switched models or inference providers.
 
-**Self-consistency.** This technique generates several answers to the same question and selects one as the consensus answer, reducing the impact of any single bad answer. My most involved experiments compared different ways of selecting that consensus answer. The evals crowned a winner here too. I'll come back to why that turned out to be a problem.
+**Self-consistency.** This technique generates several answers to the same question and selects one as the consensus answer, reducing the impact of any single bad answer. My most involved experiments compared different ways of selecting that consensus answer. The evals crowned a winner here too. That turned out to be a problem.
 
 ## When the judge lies
 
@@ -140,19 +151,9 @@ I don't use self-consistency in Boardbarian anymore (it does improve answer qual
 
 Did the judge's bias invalidate my earlier results? It may well have, and after the discovery I went back and reviewed my previous conclusions. Mostly, though, the question is moot: much of how Boardbarian works has changed since those experiments. The larger lesson is that an LLM judge buys you breadth and speed: more test cases, checked faster, than I could ever manage by hand. But automated evals are best at catching failures you have already taught them to recognize. Spot-checking is how I find the ones I have not.
 
-## Evals as insurance
-
-Evals were not only a development tool; they also gave me a migration path when a production dependency disappeared.
-
-While I was pushing Boardbarian into production, Atlas Cloud, my inference provider at the time, dropped support for Qwen3 30B A3B Instruct, the model I was using. I discovered the change when production API calls began failing. By then, I had spent months making and testing changes against that model. It was not an ideal situation, but the evals let me evaluate replacements with some confidence that they would actually work.
-
-I swapped in Qwen3.6 35B A3B, which appeared to be the most reliable replacement available. Because I was replacing an instruct model, I disabled thinking on the new model to make its behavior more closely resemble the old one. I then reran the search over combinations of sampling parameters and the full eval suite before putting the new model into service.
-
-The sudden deprecation was annoying, but the evals let me find and validate a replacement quickly.
-
 ## Conclusion
 
-At the end of the first post, I asked: how do I know any of this works? Here is what the evals currently show across the games *Warhammer Fantasy Battle*, *Munchkin*, and *Oathsworn*:
+At the end of the first post, I asked: how do I know any of this works? The numbers below do not prove that Boardbarian works. They are the best evidence I currently have, subject to the limitations of the questions and the evaluation system behind them:
 
 | Game | Questions | Correct Runs | Quote Validity | Runaway-Free Runs |
 | -------- | -------- | -------- | -------- | -------- |
