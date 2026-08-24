@@ -104,6 +104,8 @@
   {% include js-selector.html lang=lang %}
 
   {% if jekyll.environment == 'production' %}
+    {% include service-worker-cleanup.html %}
+
     <!-- PWA -->
     {% if site.pwa.enabled %}
       <script
