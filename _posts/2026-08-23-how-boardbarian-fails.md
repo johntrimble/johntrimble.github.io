@@ -4,6 +4,7 @@ title: How Boardbarian Fails
 excerpt: Wrong answers, hallucinated quotes, and doom loops. The evaluation system
   behind a small-model RAG assistant, and the LLM judge that lied to me for months.
 date: 2026-08-23 21:00 -0700
+comments: false
 media_subpath: "/assets/img/posts/how-boardbarian-fails/"
 image:
   path: how_boardbarian_fails.png
