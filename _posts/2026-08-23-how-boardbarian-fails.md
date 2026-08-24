@@ -1,13 +1,13 @@
 ---
 layout: post
 title: How Boardbarian Fails
-excerpt: Wrong answers, hallucinated quotes, and doom loops. The evaluation system behind a small-model RAG assistant, and the LLM judge that lied to me for months.
+excerpt: Wrong answers, hallucinated quotes, and doom loops. The evaluation system
+  behind a small-model RAG assistant, and the LLM judge that lied to me for months.
 date: 2026-08-23 21:00 -0700
-media_subpath: /assets/img/posts/how-boardbarian-fails/
+media_subpath: "/assets/img/posts/how-boardbarian-fails/"
 image:
-    path: how_boardbarian_fails.png
+  path: how_boardbarian_fails.png
 ---
-
 ## Introduction
 
 At the end of the [previous post]({% post_url 2026-08-03-how-boardbarian-thinks %}), I asked how I know any of this works. The honest answer starts with failure. Getting [Boardbarian](https://boardbarian.com) working meant spending most of my time staring at wrong, often bewildering, answers. This post describes the eval system I built to catch those failures and drive development. It's also a cautionary tale about trusting automated results without spot-checking them. The LLM judge I built lied to me for months.
