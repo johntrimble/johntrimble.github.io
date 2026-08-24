@@ -27,6 +27,7 @@ function verifyUrl(url) {
 
 self.addEventListener('install', (event) => {
   if (purge) {
+    event.waitUntil(self.skipWaiting());
     return;
   }
 
@@ -43,7 +44,9 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         keyList.map((key) => {
           if (purge) {
-            return caches.delete(key);
+            if (key.startsWith('chirpy-')) {
+              return caches.delete(key);
+            }
           } else {
             if (key !== swconf.cacheName) {
               return caches.delete(key);
@@ -51,6 +54,10 @@ self.addEventListener('activate', (event) => {
           }
         })
       );
+    }).then(() => {
+      if (purge) {
+        return self.clients.claim();
+      }
     })
   );
 });
