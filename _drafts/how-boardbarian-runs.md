@@ -4,6 +4,7 @@ title: How Boardbarian Runs
 excerpt: The architecture behind an AI side project that costs nothing at zero users. Cloud Run and Neon scaling to zero, a 20-second cold start, provider failover, and Terraform for all of it.
 date: 2026-07-18 09:57 -0700
 mermaid: true
+comments: false
 media_subpath: /assets/img/posts/how-boardbarian-runs/
 image:
     path: how_boardbarian_runs.png
